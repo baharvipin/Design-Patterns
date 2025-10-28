@@ -11,7 +11,9 @@ namespace ConsoleApp.src.DesignPatterns.Creational.Singleton
         public void Run()
         {
             var settings = AppSettings.GetInstance();
-            System.Console.WriteLine(settings.Get("app_creator"));
+            settings.Set("singleton" ,"app_creator");
+            System.Console.WriteLine(settings.Get("singleton1"));
+           // 
         }
     }
 }

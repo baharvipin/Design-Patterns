@@ -11,7 +11,7 @@ namespace ConsoleApp.src.DesignPatterns.Creational.Singleton
         private static AppSettings _instance;
         private Dictionary<string, object> _settings = new Dictionary<string, object>();
          
-        private AppSettings() { } // Constructor should be private so that it can not be created again and again as, Singleton design patters restrict it
+        private AppSettings() { } // Constructor should be private so that it can not be created again and again as, Singleton design patterns restrict it
          
         // Since we have restricted to create new instance, so we have to write a method that return only one instance for global use purpose
         public static AppSettings GetInstance()
