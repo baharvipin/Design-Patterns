@@ -1,21 +1,22 @@
 ﻿using ConsoleApp.src.DesignPatterns.Creational.AbstractFactoryMethod;
+using ConsoleApp.src.DesignPatterns.Creational.Builder;
 using ConsoleApp.src.DesignPatterns.Creational.FactoryMethod;
 using ConsoleApp.src.DesignPatterns.Creational.FactoryMethod.AnimalExample;
 using ConsoleApp.src.DesignPatterns.Creational.FactoryMethod.TransportExample;
 using ConsoleApp.src.DesignPatterns.Creational.Singleton;
 
 Console.WriteLine("Hello, World!");
-//var a = new SingletonExecute();
-//a.Run();
-
-//IDocument doc1 = DocumentFactory.CreateDocument("pdf");
-//doc1.Open();
-
-//IDocument doc2 = DocumentFactory.CreateDocument("word");
-//doc2.Open();
-
-//IDocument doc3 = DocumentFactory.CreateDocument("excel");
-//doc3.Open();
+ var a = new SingletonExecute();
+ a.Run();
+ 
+ IDocument doc1 = DocumentFactory.CreateDocument("pdf");
+ doc1.Open();
+ 
+ IDocument doc2 = DocumentFactory.CreateDocument("word");
+ doc2.Open();
+ 
+ IDocument doc3 = DocumentFactory.CreateDocument("excel");
+ doc3.Open();
 
 Dog d = new Dog(); // ✅ allowed
 d.MakeSound();
@@ -30,8 +31,6 @@ logistics.PlanDelivery();
 logistics = new WaterLogistic();
 logistics.PlanDelivery();
 
-
-
 IGUIFactory factory;
 
 // Choose the family dynamically
@@ -42,5 +41,15 @@ if (osType == "Windows")
 else
     factory = new MacFactory();
 
-Application app = new Application(factory);
-app.RenderUI();
+Application app1 = new Application(new WindowsFactory());
+app1.RenderUI();
+
+Application app2 = new Application(new MacFactory());
+app2.RenderUI();
+
+
+ICarBuilder builder = new SportsCarBuilder();
+builder.SetEngine("V8").SetWheels(4).SetGPS("Advanced GPS");
+
+Console.WriteLine("Starting the car building process...");
+builder.Build();
