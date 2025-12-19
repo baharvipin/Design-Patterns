@@ -4,6 +4,8 @@ using ConsoleApp.src.DesignPatterns.Creational.FactoryMethod;
 using ConsoleApp.src.DesignPatterns.Creational.FactoryMethod.AnimalExample;
 using ConsoleApp.src.DesignPatterns.Creational.FactoryMethod.TransportExample;
 using ConsoleApp.src.DesignPatterns.Creational.Singleton;
+using ConsoleApp.src.OOPsConcepts.Abstraction.Payment;
+using ConsoleApp.src.OOPsConcepts.Inheritance;
 
 Console.WriteLine("Hello, World!");
  var a = new SingletonExecute();
@@ -53,3 +55,40 @@ builder.SetEngine("V8").SetWheels(4).SetGPS("Advanced GPS");
 
 Console.WriteLine("Starting the car building process...");
 builder.Build();
+
+PaymentBase payment;
+
+payment = new CreditCardPayment();
+payment.MakePayment(2500);
+payment.Refund(500);
+payment.ShowBalance();
+
+Console.WriteLine();
+
+payment = new PayPalPayment();
+payment.MakePayment(4000);
+payment.Refund(1000);
+payment.ShowBalance();
+
+
+SavingsAccount savings = new SavingsAccount
+{
+    AccountNumber = "SA123",
+    AccountHolder = "Ravi"
+};
+
+savings.Deposit(5000);
+savings.AddInterest();
+savings.ShowBalance();
+
+Console.WriteLine();
+
+CurrentAccount current = new CurrentAccount
+{
+    AccountNumber = "CA456",
+    AccountHolder = "Amit"
+};
+
+current.Deposit(2000);
+current.Withdraw(2500);
+current.ShowBalance();
