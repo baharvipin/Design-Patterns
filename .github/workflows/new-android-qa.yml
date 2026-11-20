@@ -1,4 +1,4 @@
-name: Android (QA)
+name: New Android (QA)
 
 on:
   workflow_dispatch:
