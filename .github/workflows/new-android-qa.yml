@@ -1,0 +1,34 @@
+name: Android (QA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target QA environment"
+        required: true
+        default: "qa"
+        type: choice
+        options:
+          - qa
+          - staging
+      branch:
+        description: "Branch or git ref to build from"
+        required: true
+        default: "main"
+        type: string
+
+jobs:
+  build-android-qa:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Check out selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Run local Android action
+        uses: ./.github/actions/android
+        with:
+          target_env: ${{ inputs.environment }}
