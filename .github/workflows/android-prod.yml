@@ -1,0 +1,44 @@
+name: Android (Prod)
+run-name: Android Prod → Google Play internal · ${{ github.ref_name }} (${{ inputs.bump }})
+
+# Manual run only: signed App Bundle pointing at the PRODUCTION backend, uploaded to
+# Google Play internal testing and tagged android-v<version>. Promoting it to the
+# production track is done by hand in the Play Console.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+concurrency:
+  # Shared with Android (QA) deploys: each one takes the next version code.
+  group: android-deploy
+  cancel-in-progress: false
+
+jobs:
+  android:
+    name: Android Prod
+    runs-on: ubuntu-latest
+    # Add required reviewers to the "production" environment (Settings → Environments)
+    # to require an approval before every prod build.
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/android
+        with:
+          mode: deploy
+          environment: prod
+          bump: ${{ inputs.bump }}
+          keystore-base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          play-service-account-json: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}

@@ -1,0 +1,214 @@
+﻿Modular programming has the following problems.
+1: Reusability => we must write the same code or logic at multiple places, increasing code duplication. Later, 
+if we want to change the logic, we must change it everywhere.
+
+Reusability:
+To address reusability, object-oriented programming provides something called Classes and Objects. So, rather than 
+copy-pasting the same code repeatedly in different places, you can create a class and make an instance of the class, 
+which is called an object, and reuse it whenever you want.
+
+2: Extensibility =>  Extensibility is the ability of a software system to support new features or behaviors with minimal 
+changes to existing code. For example, if a notification system supports Email and SMS through an interface, we can add 
+WhatsApp notification by creating a new implementation without modifying the existing Email or SMS implementations. 
+This makes the system easier to maintain and evolve.
+
+Suppose you have a function and want to extend it with some new features that were impossible with functional programming. 
+You have to create an entirely new function and then change the whole function to whatever you want. OOPs, this problem is 
+addressed using concepts called Inheritance, Aggregation, and Composition. In our upcoming article, we will discuss all 
+these concepts in detail.
+
+3: Simplicity => Simplicity means keeping the system easy to understand and maintain. If every new requirement leads to 
+separate functions with duplicated logic, the code becomes scattered and difficult to maintain. Good modular design keeps 
+common functionality reusable and separates responsibilities clearly, so the overall system remains simple.
+
+Because we don’t have extensibility and reusability in modular programming, we end up with lots of functions and scattered 
+code, and from anywhere we can access the functions, security is less. In OOPs, this problem is addressed using Abstraction, 
+Encapsulation, and Polymorphism concepts.
+
+4: Maintainability => Maintainability is the ease with which developers can understand, modify, fix, test, and extend an 
+application over time. Good modular design improves maintainability by reducing code duplication, separating 
+responsibilities, and keeping changes localized. For example, if a business rule is implemented in one reusable service 
+instead of being duplicated across multiple ViewModels, changing that rule requires modifying only one place.
+
+As OOPs address Reusability, Extensibility, and Simplicity, we have good, maintainable, and clean code, increasing the 
+application’s maintainability.
+
+
+OOPs provide 4 principles. They are
+1: Encapsulation
+2: Inheritance
+3: Polymorphism
+4: Abstraction
+
+
+Note: Don’t consider Class and Objects as OOPs principle. 
+We use classes and objects to implement OOP Principles.
+
+Encapsulation: Wrapping up of data members and member functions into a single unit is called encapsulation. 
+It is also known as data hiding. It restricts the access of data members and member functions from outside the class. 
+We can achieve encapsulation by using access specifiers (private, protected, public).
+
+Abstraction: Hiding internal details and showing only 
+functionality to the user is called abstraction.
+The process of representing only essential features without 
+including background details is called abstraction.
+
+Inheritance: The process by which one class acquires the properties 
+(data members and member functions) of another class is called 
+inheritance.
+
+The class from which the members are transferred is called the 
+Parent/Base/Superclass, and the class that inherits the 
+Parent/Base/Superclass members is called the Derived/Child/Subclass.
+
+Polymorphism: 
+Static polymorphism/compile-time polymorphism/Early binding
+=> Static polymorphism is achieved by function overloading 
+and operator overloading
+Dynamic polymorphism/Run time polymorphism/Late binding
+=> dynamic polymorphism is achieved by function overriding.
+
+Points to Remember:
+1: 
+Class:
+A class is simply a user-defined data type that represents both state and behavior. 
+The state represents the properties and behavior is the action that objects can perform. 
+In other words, we can say that a class is the blueprint/plan/template that describes the details of an object. 
+A class is a blueprint from which the individual objects are created. 
+In C#, a Class is composed of three things i.e. a name, attributes, and operations.
+
+Objects:
+It is an instance of a class. A class is brought live by creating objects. 
+An object can be considered as a thing that can perform activities. 
+The set of activities that the object performs defines the object’s behavior. 
+All the members of a class can be accessed through the object. 
+To access the class members, we need to use the dot (.) operator. 
+The dot operator links the name of an object with the name of a member of a class.
+
+How can we create a Class and Object in C#?
+Let us understand how to create class and object in C#. 
+In order to understand this, please have a look at the following image. 
+As you can see in the below image, a class definition starts with the keyword class followed 
+by the class name (here the class name is Calculator), and the class body is enclosed by a pair of curly braces.
+As part of the class body, you define class members (properties, methods, variables, etc.). 
+Here as part of the body, we define one method called CalculateSum. 
+The class Calculator is just a template. In order to use this class or template, you need an object. 
+As you can see in the second part of the image, we create an object of the class Calculator using the new keyword.
+And then store the object reference on the variable calObject which is of type Calculator. 
+Now, using this calObject object we can access the class members using a dot.
+
+
+public Class Calculator {
+  public Calculator() {
+}
+
+public int Add(int a, int b) {
+  return a+b;
+  }
+}
+
+var calObject = new Calculator();
+var sum = calObject.Add(5,10);
+
+Difference between Class and Objects in C#
+Many programmers or developers still get confused by the difference between class and object. 
+As we already discussed, in object-oriented programming, a Class is a template or blueprint for creating Objects, 
+and every Object in C# must belong to a Class. 
+Please have a look at the following diagram to understand the difference between them.
+
+In C# we have the below types of classes
+Abstract Class
+Concrete class
+Sealed Class
+Partial Class
+Static Class
+
+Constructor in C#:
+It is a special method present inside a class responsible for initializing the variables of that class. 
+We will come to this point later part of this article.
+
+The name of the constructor method is exactly the same name as the class in which it was present. 
+You cannot change the name. If your class name is Employee, then the name of the constructor method is going to be Employee, 
+and if your class name is Student, then the constructor name is also going to be Student.
+
+The constructor method does not return any value. 
+That means it is a non-value returning method. Generally, methods are of two types i.e. value returning and non-value returning 
+and constructors are purely non-value returning. That is, they never return any value.
+
+Each and every class requires this constructor if we want to create the instance of the class. 
+If we don’t have a constructor, then we cannot create an instance of the class. 
+At this point, you have one doubt, earlier we defined many classes but we never used a constructor, 
+but still, we are able to create the instance of the class, how? 
+Let us clarify this doubt. Suppose, we have a class as follows:
+
+class Test
+{
+    int i;
+}
+Then, we create an instance of the above Test class somewhere in our application as follows:
+
+Test obj = new Test();
+
+Is the above statement valid? Yes, it is valid. The reason is that it is the responsibility of a programmer to define a constructor 
+under his class and if he/she fails to do, on behalf of the programmer an implicit constructor gets defined in that class by the compiler. 
+For a better understanding, please have a look at the below diagram which shows the code before and after compilation.
+
+You can see here that after compilation, the compiler adds the public constructor to the class and 
+initializes the variable and this is the responsibility of a constructor i.e. initializing the variables of that class. 
+Here, it is initializing the variable with 0. If a class variable is initialized implicitly means that is done by a constructor.
+
+Every variable we declared inside a class and every field we declared inside a class has a default value. 
+All numeric types are initialized with 0, Boolean types initialized with false, and string and object types 
+initialized with null. For a better understanding, please have a look at the below image.
+
+Like this, the initialization is performed for each and all variables present in the class and 
+this is the responsibility of the constructor. That is why a constructor is very important for us inside a class.
+
+We are not assigning a value, but a value is coming there means someone has assigned the value to these variables.
+So, who is going to do that? The constructor is going to do that. And this constructor is not defined by us. 
+Then who defined this constructor? The compiler defined this constructor for us. And we call this an Implicit Constructor. 
+And if we defined the same thing, then it is called an explicit constructor.
+
+Points to Remember while working with Constructors in C#:
+Implicitly Defined Constructors are parameter less and these constructors are also known as Default Constructors. 
+This is because they are used to initialize the variables with default values.
+Implicitly Defined Constructors are public. If you see in our example, we define the class Test with a default access specifier but 
+the constructor is public which is generated by the compiler.
+We can also define a constructor under the class and if we define it, we can call it an Explicit Constructor and 
+an Explicit Constructor can be parameter less and parameterized also.
+
+
+In the below example, we are creatinga class with three variables and in the class, we have not defined any constructor explicitly. 
+So, here compiler will provide the implicit constructor and will initialize the variables with the default value. Then from the Main method, 
+we create an instance of the class and print the values of the variables and it should print the default values based on the variable type. 
+For example, for int, the default value is 0, for bool the default value is false, and for string or object the default is null. 
+And this default initialization is done by the implicit constructor which is given by the compiler.
+
+Default or Parameter Less Constructor
+Parameterized Constructor
+Copy Constructor
+Static Constructor
+Private Constructor
+
+Private=>
+Public =>
+Protected =>
+Internal =>
+Protected Internal =>
+Private Protected  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,50 @@
+name: iOS (QA)
+run-name: >-
+  ${{ github.event_name == 'pull_request' && format('iOS QA · PR check · {0}', github.head_ref)
+  || format('iOS QA → TestFlight · {0} ({1})', github.ref_name, inputs.bump) }}
+
+# Manual run: signed build pointing at the QA backend, uploaded to TestFlight.
+# Pull requests: unsigned device build only, to catch build breaks.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+  pull_request:
+    branches: [dev, qa, staging, main]
+    paths:
+      - 'AAMMaui/**'
+      - '.github/actions/ios/**'
+      - '.github/workflows/ios-qa.yml'
+
+concurrency:
+  # PR checks run per branch. Deploys share "ios-deploy" with iOS (Prod): each one takes
+  # the next build number, so two deploys must never run at the same time.
+  group: ${{ github.event_name == 'pull_request' && format('ios-qa-{0}', github.ref) || 'ios-deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios:
+    name: iOS QA
+    runs-on: macos-26
+    permissions:
+      contents: write  # pushes the ios-build/<version>/<build> tag
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/ios
+        with:
+          mode: ${{ github.event_name == 'pull_request' && 'check' || 'deploy' }}
+          environment: qa
+          bump: ${{ inputs.bump || 'patch' }}
+          cert-p12-base64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          cert-password: ${{ secrets.IOS_CERT_PASSWORD }}
+          profile-base64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          asc-key-id: ${{ secrets.ASC_KEY_ID }}
+          asc-issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          asc-key-p8: ${{ secrets.ASC_KEY_P8 }}

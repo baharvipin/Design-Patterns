@@ -1,14 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace ConsoleApp.src.OOPsConcepts.Inheritance
+﻿namespace ConsoleApp.src.OOPsConcepts.Inheritance
 {
     public class CurrentAccount : BankAccount
     {
         private const double OverdraftLimit = 1000;
+
+        public void Deposit(double amount)
+        {
+            Balance += amount;
+            Console.WriteLine($"Deposited ₹{amount}. Current balance: ₹{Balance}");
+        }
 
         public override void Withdraw(double amount)
         {

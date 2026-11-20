@@ -1,0 +1,5203 @@
+﻿1. Core .NET MAUI
+
+You should be comfortable explaining:
+
+What is .NET MAUI and how it differs from Xamarin.Forms
+=> .NET MAUI is the evolution of Xamarin.Forms, providing a single-project structure, improved performance, 
+and support for more platforms.
+
+.NET MAUI (Multi-platform App UI) is Microsoft's cross-platform UI framework for building native mobile and 
+desktop applications using C# and .NET from a single shared codebase.
+
+It supports platforms such as:
+
+Android
+iOS
+macOS
+Windows
+
+.NET MAUI is the evolution of Xamarin.Forms and is built on modern .NET.
+
+| Xamarin.Forms                                        | .NET MAUI                                 |
+| ---------------------------------------------------- | ----------------------------------------- |
+| Older Microsoft cross-platform UI framework          | Successor to Xamarin.Forms                |
+| Separate projects were commonly used for Android/iOS | Uses **single-project architecture**      |
+| Based on Xamarin/.NET Framework-era tooling          | Built on modern **.NET 6+**               |
+| Renderers                                            | Uses **Handlers**                         |
+| More platform-specific project configuration         | Simplified platform configuration         |
+| Xamarin.Essentials was separate                      | Essentials APIs are integrated into MAUI  |
+| Xamarin support ended in 2024                        | Actively developed as part of modern .NET |
+| Package/project structure was more complex           | Simplified project structure              |
+
+
+Single-project architecture
+Key difference: Single Project
+
+In Xamarin.Forms, you commonly had:
+
+MyApp
+├── MyApp
+├── MyApp.Android
+└── MyApp.iOS
+
+With .NET MAUI, the goal is:
+
+MyApp
+├── Platforms
+│   ├── Android
+│   ├── iOS
+│   ├── MacCatalyst
+│   └── Windows
+├── Resources
+├── Views
+├── ViewModels
+└── MauiProgram.cs
+
+So you can maintain most of the application in one project while still writing platform-specific code when necessary.
+
+MauiProgram.cs
+MauiProgram.cs is the entry point for configuring a .NET MAUI application's services, dependency injection, fonts, handlers, 
+middleware-like components, and third-party libraries. It contains the CreateMauiApp() method, which creates and configures 
+the MauiApp.
+
+public static class MauiProgram
+{
+    public static MauiApp CreateMauiApp()
+    {
+        var builder = MauiApp.CreateBuilder();
+
+        builder
+            .UseMauiApp<App>()
+            .ConfigureFonts(fonts =>
+            {
+                fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                fonts.AddFont("OpenSans-Bold.ttf", "OpenSansBold");
+            });
+
+        builder.Services.AddSingleton<MainPage>();
+        builder.Services.AddTransient<LoginPage>();
+        builder.Services.AddTransient<LoginViewModel>();
+
+        return builder.Build();
+    }
+}
+What happens here?
+
+The flow is roughly:
+
+Application starts
+       ↓
+MauiProgram.CreateMauiApp()
+       ↓
+Create MauiApp builder
+       ↓
+Configure MAUI
+       ↓
+Register fonts
+       ↓
+Register services / ViewModels
+       ↓
+Configure libraries / handlers
+       ↓
+builder.Build()
+       ↓
+App starts
+
+
+1. Configure the MAUI application
+builder.UseMauiApp<App>();
+This tells MAUI that App is the application's main class.
+
+2. Dependency Injection
+
+This is one of the most important responsibilities.
+
+builder.Services.AddSingleton<IAuthService, AuthService>();
+
+builder.Services.AddTransient<LoginViewModel>();
+
+builder.Services.AddTransient<LoginPage>();
+
+Then MAUI can inject dependencies:
+
+public LoginViewModel(IAuthService authService)
+{
+    _authService = authService;
+}
+
+You don't need to manually do:
+
+var service = new AuthService();
+
+The DI container creates and manages it.
+
+3. Register fonts
+.ConfigureFonts(fonts =>
+{
+    fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+});
+
+Then you can use the font throughout your application.
+
+4. Configure third-party libraries
+
+For example, libraries such as Firebase, Maps, CommunityToolkit, etc. may require initialization/configuration here.
+
+Conceptually:
+
+builder
+    .UseMauiApp<App>()
+    .UseSomeLibrary();
+
+
+5. Configure handlers
+
+You can customize how MAUI controls map to native Android/iOS controls.
+
+For example:
+
+builder.ConfigureMauiHandlers(handlers =>
+{
+    // Custom handler configuration
+});
+
+This becomes particularly useful when you need platform-specific customization.
+
+
+Dependency Injection
+Dependency Injection (DI) is a design pattern where a class receives the objects/services it depends on 
+from the outside 
+instead of creating them itself.
+
+Without DI ❌
+public class LoginViewModel
+{
+    private AuthService _authService;
+
+    public LoginViewModel()
+    {
+        _authService = new AuthService();
+    }
+}
+
+The problem is that LoginViewModel is tightly coupled to AuthService.
+
+If tomorrow you want to replace it with:
+
+MockAuthService
+StagingAuthService
+ProductionAuthService
+
+you have to modify the ViewModel.
+
+With DI ✅
+
+First create an interface:
+
+public interface IAuthService
+{
+    Task<bool> LoginAsync(string username, string password);
+}
+
+Implementation:
+
+public class AuthService : IAuthService
+{
+    public async Task<bool> LoginAsync(
+        string username,
+        string password)
+    {
+        // API call
+        return true;
+    }
+}
+
+Register it in MauiProgram.cs:
+
+builder.Services.AddSingleton<IAuthService, AuthService>();
+Then inject it:
+
+public class LoginViewModel
+{
+    private readonly IAuthService _authService;
+
+    public LoginViewModel(IAuthService authService)
+    {
+        _authService = authService;
+    }
+}
+
+Now the DI container creates AuthService and provides it to LoginViewModel.
+
+Think of it like this
+MauiProgram.cs
+      │
+      │ registers
+      ↓
+IAuthService → AuthService
+      │
+      │ injected into
+      ↓
+LoginViewModel
+
+
+Dependency Injection lifetimes
+A DI lifetime determines how long an object instance should live and when a new instance should be created.
+
+The three common lifetimes are:
+Singleton
+builder.Services.AddSingleton<IAuthService, AuthService>();
+
+Singleton = one instance for the lifetime of the application/service container.
+
+If multiple classes request IAuthService:
+
+LoginViewModel ─────┐
+                    │
+HomeViewModel ──────┼──→ Same AuthService instance
+                    │
+ProfileViewModel ───┘
+
+Example
+builder.Services.AddSingleton<IAuthService, AuthService>();
+If:
+
+var service1 = ...;
+var service2 = ...;
+
+both resolve to the same instance.
+
+When to use Singleton in MAUI?
+
+Good candidates:
+
+API service
+Authentication service
+Configuration service
+App settings service
+Logging service
+Database service, depending on implementation
+
+For example:
+
+builder.Services.AddSingleton<IApiService, ApiService>();
+builder.Services.AddSingleton<IAuthService, AuthService>();
+Interview answer
+
+Singleton creates one instance and reuses that instance throughout the application's lifetime. 
+I use it for stateless or application-wide services where sharing the same instance is appropriate.
+
+Transient
+builder.Services.AddTransient<LoginViewModel>();
+
+Transient = a new instance every time the dependency is requested.
+
+Example:
+
+Page A → LoginViewModel #1
+
+Page B → LoginViewModel #2
+
+Page C → LoginViewModel #3
+
+Each is a separate object.
+
+In MAUI
+
+Transient is commonly useful for:
+
+builder.Services.AddTransient<LoginPage>();
+builder.Services.AddTransient<LoginViewModel>();
+
+builder.Services.AddTransient<ContractPage>();
+builder.Services.AddTransient<ContractViewModel>();
+
+Every time the DI container creates/resolves one of these, it creates a new instance.
+
+Why ViewModels are often Transient
+
+Suppose the user opens:
+
+Contract #100
+
+and later:
+
+Contract #200
+
+You generally don't want both pages sharing the same ViewModel state.
+
+Transient gives you a fresh instance.
+
+Interview answer
+
+Transient creates a new instance every time the service is requested. I commonly use it for ViewModels 
+and page-specific services where each page/navigation instance should have its own state.
+
+
+Scoped
+This is the one that causes the most confusion in MAUI.
+
+In ASP.NET Core, a scope is commonly associated with an HTTP request:
+
+HTTP Request
+     ↓
+  Scope
+     ↓
+Service instance
+But MAUI is a client application, not a request-based server application.
+
+So you need to understand that a scoped lifetime doesn't automatically mean:
+
+"one instance per API request."
+
+That's an important interview trap.
+Conceptually
+
+Within the same DI scope:
+
+Scope A
+ ├── Service → Instance #1
+ ├── Service → Instance #1
+ └── Service → Instance #1
+
+A different scope gets another instance:
+
+Scope B
+ └── Service → Instance #2
+ So:
+
+Singleton
+    ↓
+One instance globally
+
+Scoped
+    ↓
+One instance per scope
+
+Transient
+    ↓
+New instance each time
+
+| Lifetime      | Instance                               | Typical MAUI usage              |
+| ------------- | -------------------------------------- | ------------------------------- |
+| **Singleton** | One for application/container lifetime | API/Auth/config services        |
+| **Transient** | New instance every resolution          | Pages/ViewModels                |
+| **Scoped**    | One per DI scope                       | Specific scoped workflows/state |
+
+Remember this
+Singleton
+"One for everyone"
+
+Scoped
+"One per scope"
+
+Transient
+"New every time"
+
+Imagine your application has:
+
+LoginPage
+HomePage
+ContractsPage
+ProfilePage
+
+You could configure:
+
+builder.Services.AddSingleton<IApiService, ApiService>();
+builder.Services.AddSingleton<IAuthService, AuthService>();
+
+builder.Services.AddTransient<LoginPage>();
+builder.Services.AddTransient<LoginViewModel>();
+
+builder.Services.AddTransient<ContractsPage>();
+builder.Services.AddTransient<ContractsViewModel>();
+
+Then the architecture looks like:
+
+                    DI Container
+                         │
+          ┌──────────────┴──────────────┐
+          ↓                             ↓
+    Singleton Services            Transient Objects
+          │                             │
+    ┌─────┴─────┐                ┌──────┴──────┐
+    ↓           ↓                ↓             ↓
+ApiService  AuthService     LoginViewModel  ContractsVM
+    │           │
+    └───────────┘
+          │
+          ↓
+       REST API
+
+"Why wouldn't you register everything as Singleton?"
+ 
+"Because Singleton means the same instance is shared for the lifetime of the application. That's not appropriate for objects 
+that contain page-specific or user-specific state. For example, a ViewModel registered as Singleton could retain stale state 
+and unnecessarily keep objects alive. I would generally use Singleton for application-wide services and Transient for page/ViewModel 
+instances."
+
+"What's the difference between Singleton and Transient?"
+
+Singleton creates one instance and reuses it, while Transient creates a new instance every time the dependency is resolved.
+
+"What's Scoped?"
+
+Scoped creates one instance within a particular DI scope and reuses it inside that scope. Unlike ASP.NET Core, 
+MAUI doesn't have a natural HTTP-request scope, so Scoped needs to be used with an explicitly created scope or a 
+framework/library that manages scopes
+
+Handlers vs Renderers
+Both are mechanisms that connect a cross-platform UI control to its native platform control.
+For example, when you write:
+<Button Text="Login" />
+you are using a MAUI/Xamarin.Forms abstraction.
+But Android and iOS need their own native controls.
+Conceptually:
+Your XAML
+   ↓
+MAUI Button
+   ↓
+Platform-specific implementation
+   ↓
+Android Button / iOS UIButton
+
+The major difference is how that mapping is implemented.
+
+2. Xamarin.Forms — Renderers
+
+Xamarin.Forms primarily used Renderers.
+
+For example:
+
+Xamarin.Forms Button
+        ↓
+ButtonRenderer
+        ↓
+Android Button
+
+And on iOS:
+
+Xamarin.Forms Button
+        ↓
+ButtonRenderer
+        ↓
+UIButton
+
+A Renderer was responsible for creating/configuring the native control.
+Example concept
+
+Suppose you wanted to customize a Xamarin.Forms button.
+
+You might create something like:
+
+
+public class MyButtonRenderer : ButtonRenderer
+{
+    protected override void OnElementChanged(ElementChangedEventArgs<Button> e)
+    {
+        base.OnElementChanged(e);
+        if (Control != null)
+        {
+            // Customize the native control
+            Control.SetBackgroundColor(Android.Graphics.Color.Red);
+        }
+    }
+}
+So the Renderer sits between:
+Xamarin.Forms control
+        ↓
+Renderer
+        ↓
+Native control
+
+3. .NET MAUI — Handlers
+
+.NET MAUI replaced the Renderer architecture with Handlers.
+
+The architecture is:
+
+.NET MAUI Control
+       ↓
+    Handler
+       ↓
+Native Control
+
+For example:
+
+MAUI Button
+    ↓
+ButtonHandler
+    ↓
+Android Button
+
+4. Why did MAUI move to Handlers?
+
+The main reason is to make the abstraction lighter and more efficient.
+
+Renderers were more tightly coupled to the lifecycle of the native control and often involved a larger inheritance hierarchy.
+
+Handlers use a property/mapping-based architecture.
+
+For example:
+MAUI Button
+   │
+   ├── Text
+   ├── TextColor
+   ├── FontSize
+   └── Background
+        ↓
+   ButtonHandler
+        ↓
+   Native Button
+The Handler maps MAUI properties to native properties.
+
+5. What is a Handler Mapping?
+
+This is an important senior-level interview topic.
+
+You can modify how a MAUI control maps its properties to the native control.
+
+For example:
+
+Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping(
+    "CustomEntry",
+    (handler, view) =>
+    {
+#if ANDROID
+        handler.PlatformView.SetPadding(10, 10, 10, 10);
+#endif
+    });
+
+Conceptually:
+
+Entry
+ │
+ │ Padding
+ ↓
+EntryHandler
+ │
+ │ Mapping
+ ↓
+Android EditText
+
+You're telling MAUI:
+
+"When this MAUI property/control is handled, apply this additional native-platform customization."
+
+6. Renderer vs Handler
+| Xamarin.Forms Renderer                      | .NET MAUI Handler          |
+| ------------------------------------------- | -------------------------- |
+| Used primarily by Xamarin.Forms             | Used by .NET MAUI          |
+| Renderer-based architecture                 | Handler-based architecture |
+| More inheritance-oriented                   | Mapping-oriented           |
+| Tightly coupled to native control lifecycle | Lighter abstraction        |
+| `OnElementChanged()` commonly used          | Property/method mappings   |
+| Custom Renderer                             | Custom Handler / Mapper    |
+| Xamarin.Forms architecture                  | Modern MAUI architecture   |
+
+"What is the difference between Handlers and Renderers?"
+
+"Xamarin.Forms used Renderers to map cross-platform controls to their native platform controls. 
+.NET MAUI replaced Renderers with Handlers. Handlers provide a lighter, mapping-based architecture 
+where MAUI control properties and behavior are mapped to native platform properties. This reduces 
+the need for heavy renderer inheritance and makes platform-specific customization more flexible. 
+In MAUI, we can customize controls using Handler mappings or create custom handlers when required."
+
+"Give me a real example where you used a Handler."
+
+"If I need to remove the underline from an Entry on Android or change a native control's padding, 
+I can use EntryHandler.Mapper and apply the native Android customization without creating a completely 
+separate custom control."
+
+Shell navigation
+Shell Navigation is the navigation system provided by .NET MAUI Shell. It makes it easier to navigate between pages 
+using routes and URIs, instead of manually creating and pushing pages.
+
+Shell Navigation is a URI-based navigation system in .NET MAUI that allows us to navigate between pages using registered routes. 
+It also supports navigation parameters, navigation stacks, deep linking, and hierarchical navigation
+
+ContentPage, ContentView, TemplatedView
+1. ContentPage
+ContentPage represents a full application screen/page.
+Use it when the user navigates to a screen.
+public partial class LoginPage : ContentPage 
+{
+     public LoginPage() 
+     {
+        InitializeComponent();
+     }
+}
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui">
+
+    <VerticalStackLayout>
+        <Label Text="Login" />
+        <Entry Placeholder="Email" />
+        <Button Text="Login" />
+    </VerticalStackLayout>
+
+</ContentPage>
+'
+Typical examples:
+
+LoginPage
+HomePage
+ProfilePage
+SettingsPage
+ContractDetailsPage
+
+Think:
+ContentPage = complete screen
+
+2. ContentView
+ContentView is a reusable UI component that you put inside a page or another view.
+For example, suppose multiple pages need the same customer header.
+<ContentView
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui">
+
+    <Border Padding="10">
+        <VerticalStackLayout>
+            <Label Text="{Binding CustomerName}" />
+            <Label Text="{Binding CustomerEmail}" />
+        </VerticalStackLayout>
+    </Border>
+
+</ContentView>
+Then use it inside a page:
+<ContentPage>
+    <VerticalStackLayout>
+        <local:CustomerHeaderView />
+        <Button Text="Continue" />
+    </VerticalStackLayout>
+</ContentPage>
+Typical examples:
+
+Custom header
+Custom card
+Address component
+Error message component
+Reusable form section
+Custom loading view
+
+Think:
+
+ContentView = reusable piece of UI
+
+3. TemplatedView
+TemplatedView is used when you want a control whose visual appearance is defined by a template.
+The important concept is:
+Control
+   ↓
+ControlTemplate
+   ↓
+Visual UI
+A TemplatedView provides the foundation for creating template-based custom controls.
+For example:
+public class MyCustomControl : TemplatedView
+{
+    public static readonly BindableProperty TitleProperty =
+        BindableProperty.Create(
+            nameof(Title),
+            typeof(string),
+            typeof(MyCustomControl));
+
+    public string Title
+    {
+        get => (string)GetValue(TitleProperty);
+        set => SetValue(TitleProperty, value);
+    }
+}
+
+Then you can define a ControlTemplate:
+<ControlTemplate x:Key="MyCustomControlTemplate">
+    <Border Padding="10">
+        <Label
+            Text="{TemplateBinding Title}" />
+    </Border>
+</ControlTemplate>
+And apply that template to the control.
+
+This is useful when you want to create a custom control with customizable visual structure.
+
+Think:
+
+TemplatedView = custom control whose UI comes from a template
+
+| Type            | Purpose                       | Example                    |
+| --------------- | ----------------------------- | -------------------------- |
+| `ContentPage`   | Complete screen               | LoginPage                  |
+| `ContentView`   | Reusable UI component         | CustomerCardView           |
+| `TemplatedView` | Template-based custom control | CustomButton/CustomControl |
+
+Visual hierarchy
+Application
+   │
+   ├── ContentPage
+   │      │
+   │      ├── ContentView
+   │      │      └── UI elements
+   │      │
+   │      └── ContentView
+   │
+   └── Another ContentPage
+While:
+TemplatedView
+      │
+      └── ControlTemplate
+              │
+              └── UI structure
+
+ContentPage represents a complete application screen and participates in navigation. ContentView is a reusable UI component 
+that can be embedded inside pages or other views. TemplatedView is used to build custom, template-driven controls where the 
+visual structure is provided through a ControlTemplate.
+
+Resources and styles
+1. What are Resources?
+A Resource is an object/value that we define once and reuse throughout your UI.
+For example, instead of writing this everywhere:
+TextColor="#5A7890"
+we can define it once:
+<ContentPage.Resources>
+    <Color x:Key="PrimaryColor">#5A7890</Color>
+</ContentPage.Resources>
+Then reuse it:
+<Label
+    Text="Welcome"
+    TextColor="{StaticResource PrimaryColor}" />
+Common resources
+You can define:
+Colors
+Styles
+Brushes
+Fonts
+Strings
+Templates
+Converters
+Custom objects
+
+2. What is ResourceDictionary?
+Resources are stored in a ResourceDictionary.
+For example:
+<ContentPage.Resources>
+    <ResourceDictionary>
+        <Color x:Key="PrimaryColor">#5A7890</Color>
+        <Color x:Key="ErrorColor">Red</Color>
+        <x:Double x:Key="PagePadding">20</x:Double>
+    </ResourceDictionary>
+</ContentPage.Resources>
+We can then use:
+<VerticalStackLayout
+    Padding="{StaticResource PagePadding}">
+    <Label
+        Text="Welcome"
+        TextColor="{StaticResource PrimaryColor}" />
+</VerticalStackLayout>
+
+3. What are Styles?
+A Style allows you to define common properties for a control once.
+Without Style:
+<Label
+    Text="Name"
+    FontSize="16"
+    FontAttributes="Bold"
+    TextColor="#5A7890" />
+
+<Label
+    Text="Email"
+    FontSize="16"
+    FontAttributes="Bold"
+    TextColor="#5A7890" />
+This is repetitive.
+Instead:
+<Style x:Key="TitleLabelStyle" TargetType="Label">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontAttributes" Value="Bold" />
+    <Setter Property="TextColor" Value="#5A7890" />
+</Style>
+
+<Label
+    Text="Name"
+    Style="{StaticResource TitleLabelStyle}" />
+
+<Label
+    Text="Email"
+    Style="{StaticResource TitleLabelStyle}" />
+
+Style = collection of property settings for a control.
+4. Explicit vs Implicit Styles
+
+Explicit Style
+Has an x:Key.
+<Style x:Key="PrimaryButtonStyle"
+       TargetType="Button">
+    <Setter Property="BackgroundColor"
+            Value="#5A7890" />
+    <Setter Property="TextColor"
+            Value="White" />
+</Style>
+we must explicitly apply it:
+<Button
+    Text="Login"
+    Style="{StaticResource PrimaryButtonStyle}" />
+
+Implicit Style
+No x:Key.
+<Style TargetType="Button">
+    <Setter Property="BackgroundColor"
+            Value="#5A7890" />
+    <Setter Property="TextColor"
+            Value="White" />
+</Style>
+
+Now all Buttons within that resource scope automatically use the style.
+<Button Text="Login" />
+<Button Text="Register" />
+<Button Text="Continue" />
+All get the same styling.
+Interview difference
+Explicit style requires x:Key and manual application. Implicit style has no key and automatically applies 
+to controls matching its TargetType.
+
+5. Where can Resources be defined?
+This is very important in real MAUI applications.
+Page-level
+<ContentPage.Resources>
+    ...
+</ContentPage.Resources>
+Available within that page.
+View-level
+<ContentView.Resources>
+    ...
+</ContentView.Resources>
+Available within that view.
+Application-level
+In App.xaml:
+<Application.Resources>
+    <ResourceDictionary>
+        <Color x:Key="PrimaryColor">#5A7890</Color>
+        <Style TargetType="Button">
+            <Setter Property="TextColor" Value="White" />
+        </Style>
+    </ResourceDictionary>
+</Application.Resources>
+These can be shared throughout the application.
+
+6. StaticResource vs DynamicResource
+Another very common MAUI interview question.
+StaticResource
+<Label
+    TextColor="{StaticResource PrimaryColor}" />
+
+It looks up the resource when the UI is created.
+Use it when the resource doesn't need to change dynamically.
+
+DynamicResource
+<Label
+    TextColor="{DynamicResource PrimaryColor}" />
+
+The control observes the resource and can update when the resource value changes.
+
+Useful for things like:
+
+Light/Dark theme
+Runtime theme switching
+Dynamic colors
+
+For example:
+<Color x:Key="PrimaryColor">
+    ...
+</Color>
+If the resource dictionary changes the value, controls using DynamicResource can reflect the change.
+StaticResource resolves a resource once, while DynamicResource maintains a relationship with the resource 
+so the UI can respond when that resource changes.
+7. Global styling architecture
+For a production MAUI application, you might have:
+Resources/
+│
+├── Styles/
+│   ├── Colors.xaml
+│   ├── Styles.xaml
+│   ├── Buttons.xaml
+│   ├── Labels.xaml
+│   └── Entry.xaml
+│
+├── Fonts/
+│
+└── Images/
+
+For example, Colors.xaml:
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui">
+    <Color x:Key="PrimaryColor">#5A7890</Color>
+    <Color x:Key="SecondaryColor">#FFFFFF</Color>
+    <Color x:Key="ErrorColor">#D32F2F</Color>
+</ResourceDictionary>
+And styles:
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui">
+    <Style x:Key="PrimaryButton"
+           TargetType="Button">
+        <Setter Property="BackgroundColor"
+                Value="{StaticResource PrimaryColor}" />
+        <Setter Property="TextColor"
+                Value="White" />
+        <Setter Property="CornerRadius"
+                Value="8" />
+    </Style>
+</ResourceDictionary>
+Then merge them in App.xaml:
+<Application.Resources>
+    <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary
+                Source="Resources/Styles/Colors.xaml" />
+            <ResourceDictionary
+                Source="Resources/Styles/Styles.xaml" />
+        </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+</Application.Resources>
+Then anywhere:
+<Button
+    Text="Login"
+    Style="{StaticResource PrimaryButton}" />
+    Remember this hierarchy:
+
+Resource
+   ↓
+Reusable value/object
+   ↓
+Color / Brush / Style / Converter / Template
+
+Style
+   ↓
+Collection of control properties
+   ↓
+FontSize + Color + Padding + etc.
+And the key interview points:
+| Concept              | Meaning                                   |
+| -------------------- | ----------------------------------------- |
+| `ResourceDictionary` | Stores reusable resources                 |
+| `Style`              | Groups control properties                 |
+| `StaticResource`     | Resolves resource statically              |
+| `DynamicResource`    | Responds to resource changes              |
+| Explicit Style       | Has `x:Key`, manually applied             |
+| Implicit Style       | No `x:Key`, automatically applied by type |
+| `App.xaml` resources | Application-wide resources                |
+| Page resources       | Limited to that page/scope                |
+
+In .NET MAUI, ResourceDictionary provides a centralized mechanism for reusable UI resources 
+such as colors, brushes, styles, converters, and templates. Styles encapsulate common control 
+properties. Resources can be scoped at the application, page, or view level. I typically keep 
+global design tokens like colors and typography in shared resource dictionaries and use explicit 
+or implicit styles to maintain consistent UI across the application.
+
+StaticResource vs DynamicResource
+In .NET MAUI, both StaticResource and DynamicResource are used to access values from a ResourceDictionary, 
+but the key difference is what happens when the resource changes.
+
+1. StaticResource
+StaticResource resolves the resource when the XAML object is created.
+<ContentPage.Resources>
+    <Color x:Key="PrimaryColor">Blue</Color>
+</ContentPage.Resources>
+
+<Label
+    Text="Hello"
+    TextColor="{StaticResource PrimaryColor}" />
+    he Label gets Blue.
+If you later change the PrimaryColor resource, the Label doesn't automatically update.
+Think:
+StaticResource = resolve once
+
+2. DynamicResource
+DynamicResource creates a relationship between the control and the resource.
+<ContentPage.Resources>
+    <Color x:Key="PrimaryColor">Blue</Color>
+</ContentPage.Resources>
+
+<Label
+    Text="Hello"
+    TextColor="{DynamicResource PrimaryColor}" />
+
+If the resource changes at runtime:
+Resources["PrimaryColor"] = Colors.Red;
+the Label can automatically update to Red.
+Think:
+DynamicResource = observe resource changes
+
+|                  | `StaticResource`                  | `DynamicResource`      |
+| ---------------- | --------------------------------- | ---------------------- |
+| Resolution       | At creation                       | Dynamically            |
+| Resource changes | ❌ UI doesn't automatically update| ✅ UI can update       |
+| Performance      | Slightly cheaper                  | Slightly more overhead |
+| Typical use      | Fixed styles/colors               | Theme/runtime changes  |
+| Example          | Button style                      | Light/Dark theme       |
+
+Real-world MAUI example
+
+Suppose your app supports Light/Dark mode.
+You might have:
+
+<Color x:Key="PageBackground">White</Color>
+<Color x:Key="TextColor">Black</Color>
+
+Then:
+
+<ContentPage
+    BackgroundColor="{DynamicResource PageBackground}">
+    <Label
+        Text="Welcome"
+        TextColor="{DynamicResource TextColor}" />
+
+</ContentPage>
+When the theme changes, you can replace/update the resources:
+Light Theme
+    PageBackground → White
+    TextColor      → Black
+
+        ↓ Theme Change
+
+Dark Theme
+    PageBackground → Black
+    TextColor      → White
+Controls using DynamicResource can respond to those resource changes.
+
+
+I use StaticResource for resources that are effectively immutable during the lifetime of the UI, such as 
+fixed styles, spacing, or constant colors. I use DynamicResource when the resource can change at 
+runtime, most commonly for theme switching or other dynamic UI configuration. DynamicResource has 
+some additional runtime overhead, so I wouldn't use it everywhere unnecessarily
+
+x:DataType and compiled bindings
+x:DataType tells MAUI what type the binding context is for a XAML element.
+For example, suppose you have:
+public class LoginViewModel
+{
+    public string Username { get; set; }
+    public string Password { get; set; }
+}
+Normally:
+
+<Entry Text="{Binding Username}" />
+MAUI doesn't strongly know what Username is.
+
+You can specify:
+
+<ContentPage
+    x:DataType="vm:LoginViewModel">
+
+    <Entry Text="{Binding Username}" />
+    <Entry Text="{Binding Password}" />
+
+</ContentPage>
+Now MAUI knows:
+
+BindingContext
+      ↓
+LoginViewModel
+      ↓
+Username
+Password
+
+2. What are compiled bindings?
+
+Without x:DataType, bindings are traditionally resolved at runtime.
+<Label Text="{Binding UserName}" />
+The framework essentially has to determine at runtime:
+What is BindingContext?
+        ↓
+Does it contain UserName?
+        ↓
+Get the value
+With x:DataType:
+<ContentPage x:DataType="vm:LoginViewModel">
+
+    <Label Text="{Binding Username}" />
+
+</ContentPage>
+MAUI can generate/compile binding information ahead of time.
+
+This is called a compiled binding.
+
+Benefits
+Better performance
+Compile-time validation
+Better IntelliSense
+Easier refactoring
+Fewer binding typos
+
+3. Why is this useful?
+
+Suppose you accidentally write:
+<Label Text="{Binding UserNmae}" />
+but your ViewModel contains:
+public string UserName { get; set; }
+Without compiled binding, you may only discover the problem when running the app.
+With:
+x:DataType="vm:LoginViewModel"
+the compiler/tooling can identify the incorrect property much earlier.
+So:
+Normal Binding
+    ↓
+Runtime resolution
+    ↓
+Errors may appear at runtime
+
+Compiled Binding
+    ↓
+Known data type
+    ↓
+Compile-time checking
+
+4. x:DataType doesn't set BindingContext
+This is a very important interview point.
+
+Consider:
+
+<ContentPage
+    x:DataType="vm:LoginViewModel">
+
+    <Label Text="{Binding Username}" />
+
+</ContentPage>
+
+x:DataType does NOT create or assign a LoginViewModel.
+It only tells XAML:
+
+"The binding context for this XAML is expected to be a LoginViewModel."
+
+You still need to set the actual BindingContext.
+For example:
+
+public LoginPage(LoginViewModel viewModel)
+{
+    InitializeComponent();
+
+    BindingContext = viewModel;
+}
+So:
+
+x:DataType
+    ↓
+Tells compiler what type to expect
+
+BindingContext
+    ↓
+Provides the actual object
+
+5. Very common MAUI example: CollectionView
+
+This is where x:DataType becomes especially useful.
+
+Suppose:
+
+public class RepairerDetail
+{
+    public string Name { get; set; }
+    public string Address { get; set; }
+}
+Your ViewModel:
+
+public ObservableCollection<RepairerDetail> Repairers { get; }
+
+You can write:
+
+<CollectionView
+    ItemsSource="{Binding Repairers}">
+    <CollectionView.ItemTemplate>
+        <DataTemplate x:DataType="models:RepairerDetail">
+            <VerticalStackLayout>
+                <Label Text="{Binding Name}" />
+                <Label Text="{Binding Address}" />
+            </VerticalStackLayout>
+        </DataTemplate>
+    </CollectionView.ItemTemplate>
+</CollectionView>
+Here the important part is:
+
+<DataTemplate x:DataType="models:RepairerDetail">
+It tells MAUI:
+
+Each item in this template is a RepairerDetail.
+Therefore:
+{Binding Name}
+{Binding Address}
+are strongly typed/compiled bindings.
+
+6. Parent vs ItemTemplate
+This is a common place where developers make mistakes.
+Suppose:
+
+<ContentPage
+    x:DataType="vm:RepairerViewModel">
+    <CollectionView ItemsSource="{Binding Repairers}">
+        <CollectionView.ItemTemplate>
+            <DataTemplate x:DataType="models:RepairerDetail">
+                <Label Text="{Binding Name}" />
+            </DataTemplate>
+        </CollectionView.ItemTemplate>
+    </CollectionView>
+</ContentPage>
+
+There are two different binding contexts:
+ContentPage
+    ↓
+RepairerViewModel
+    ↓
+Repairers
+
+CollectionView ItemTemplate
+    ↓
+RepairerDetail
+    ↓
+Name
+
+Therefore:
+
+ContentPage
+x:DataType="vm:RepairerViewModel"
+
+and:
+
+DataTemplate
+x:DataType="models:RepairerDetail"
+
+are both correct.
+
+
+7. x:DataType on ContentView
+Since you've just asked about ContentView, this is especially useful.
+<ContentView
+    x:Class="MyApp.Views.RepairerCard"
+    x:DataType="models:RepairerDetail">
+    <VerticalStackLayout>
+        <Label Text="{Binding Name}" />
+        <Label Text="{Binding Address}" />
+    </VerticalStackLayout>
+</ContentView>
+Now your reusable ContentView has a strongly typed binding context.
+
+8. x:DataType and compiled binding are related but not exactly the same thing
+This distinction is good for a senior interview.
+x:DataType
+
+Specifies the expected binding type:
+x:DataType="vm:LoginViewModel"
+
+Compiled binding
+Is the resulting strongly typed/compiled binding behavior:
+Text="{Binding Username}"
+
+when MAUI knows the binding type.
+So you can say:
+
+x:DataType provides the type information required for compiled bindings.
+
+9. What if I don't use x:DataType?
+
+This works:
+
+<Label Text="{Binding Username}" />
+
+but the binding is not strongly typed in the same way.
+With:
+
+<Label
+    x:DataType="vm:LoginViewModel"
+    Text="{Binding Username}" />
+
+MAUI has type information for the binding.
+
+10. Interview question: Does x:DataType improve runtime performance?
+
+Yes, when it enables compiled bindings.
+
+Compiled bindings avoid some of the runtime reflection/dynamic binding work associated with traditional 
+bindings.
+
+So the benefits are:
+x:DataType
+    ↓
+Known type
+    ↓
+Compiled binding
+    ↓
+Less runtime binding work
+    +
+Compile-time validation
+    +
+Better tooling
+
+What is x:DataType in .NET MAUI?
+x:DataType specifies the expected type of the binding context for a XAML element. It enables compiled bindings,
+which provide better performance, compile-time validation and better IntelliSense. It doesn't set the 
+BindingContext itself; it only provides type information for the binding system.
+
+And if they ask about a CollectionView:
+
+"I normally specify x:DataType on the DataTemplate because the binding context changes from the page's 
+ViewModel to the individual collection item. For example, the page can use RepairerViewModel, while the 
+DataTemplate uses RepairerDetail."
+
+BindingContext = actual object
+x:DataType = expected type
+Compiled Binding = strongly typed binding generated using that type
+
+ICommand / CommunityToolkit.Mvvm
+What is ICommand?
+ICommand is an interface used to represent an action that can be executed from the UI.
+
+In MVVM, instead of handling a button's Clicked event in the code-behind, you bind the button to an ICommand.
+Code-behind approach
+<Button
+    Text="Login"
+    Clicked="OnLoginClicked" />
+private void OnLoginClicked(object sender, EventArgs e)
+{
+    // Login
+}
+This creates a dependency between the UI and code-behind.
+MVVM approach
+<Button
+    Text="Login"
+    Command="{Binding LoginCommand}" />
+
+ViewModel:
+
+public ICommand LoginCommand { get; }
+
+public LoginViewModel()
+{
+    LoginCommand = new Command(Login);
+}
+
+private void Login()
+{
+    // Login
+}
+
+Now:
+
+Button
+   ↓
+Command
+   ↓
+ViewModel
+   ↓
+Business logic
+
+This is better aligned with MVVM.
+2. What does ICommand contain?
+
+The important members are:
+
+public interface ICommand
+{
+    event EventHandler? CanExecuteChanged;
+
+    bool CanExecute(object? parameter);
+
+    void Execute(object? parameter);
+}
+Execute
+
+The actual operation:
+
+LoginCommand.Execute(null);
+
+CanExecute
+
+Determines whether the command can currently run.
+
+For example:
+
+LoginCommand = new Command(
+    Login,
+    () => !string.IsNullOrWhiteSpace(Username));
+
+The button can be disabled when CanExecute() returns false.
+
+CanExecuteChanged
+
+Notifies the UI that the result of CanExecute() has changed.
+
+3. What is CommunityToolkit.Mvvm?
+
+CommunityToolkit.Mvvm is Microsoft's MVVM library that provides helpers for building ViewModels with much less boilerplate.
+
+It provides things such as:
+
+ObservableObject
+ObservableProperty
+RelayCommand
+AsyncRelayCommand
+RelayCommand
+ObservableRecipient
+Messaging APIs
+
+It is also commonly called the MVVM Toolkit.
+4. ObservableObject
+
+Without the toolkit, you might write:
+
+private string _username;
+
+public string Username
+{
+    get => _username;
+    set
+    {
+        if (_username != value)
+        {
+            _username = value;
+            OnPropertyChanged();
+        }
+    }
+}
+
+Using CommunityToolkit.Mvvm:
+public partial class LoginViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string username;
+}
+The toolkit generates the property and notification code.
+
+You effectively get:
+
+public string Username
+{
+    get;
+    set;
+}
+
+with INotifyPropertyChanged behavior generated for you.
+
+5. RelayCommand
+
+Instead of manually creating:
+
+public ICommand LoginCommand { get; }
+
+public LoginViewModel()
+{
+    LoginCommand = new Command(Login);
+}
+
+you can use:
+
+public partial class LoginViewModel : ObservableObject
+{
+    [RelayCommand]
+    private void Login()
+    {
+        // Login logic
+    }
+}
+
+The toolkit generates a command for you.
+
+Your XAML:
+
+<Button
+    Text="Login"
+    Command="{Binding LoginCommand}" />
+
+Notice the method is:
+
+Login()
+
+but the generated command is:
+
+LoginCommand
+
+6. AsyncRelayCommand
+
+This is particularly important in real MAUI applications.
+
+Instead of:
+
+public ICommand LoadCommand { get; }
+
+public ViewModel()
+{
+    LoadCommand = new Command(async () => await LoadData());
+}
+
+you can use:
+
+[RelayCommand]
+private async Task LoadData()
+{
+    await service.LoadDataAsync();
+}
+
+The toolkit generates an AsyncRelayCommand.
+
+Then:
+
+<Button
+    Text="Load"
+    Command="{Binding LoadDataCommand}" />
+Why is this better?
+
+AsyncRelayCommand provides useful async-command behavior, including tracking execution state.
+
+For example:
+
+IsRunning
+
+can be used to control a loading indicator.
+7. Command parameters
+
+You can pass a parameter from XAML.
+
+<Button
+    Text="Delete"
+    Command="{Binding DeleteCommand}"
+    CommandParameter="{Binding Id}" />
+
+ViewModel:
+
+[RelayCommand]
+private async Task Delete(int id)
+{
+    await service.DeleteAsync(id);
+}
+
+The generated command understands the parameter type.
+
+8. CanExecute
+You can also control whether a command is executable.
+For example:
+
+[ObservableProperty]
+private bool isBusy;
+
+[RelayCommand(CanExecute = nameof(CanSave))]
+private async Task Save()
+{
+    await SaveDataAsync();
+}
+
+private bool CanSave()
+{
+    return !IsBusy;
+}
+
+When IsBusy changes, you may need to notify the command that its execution state changed.
+The toolkit provides:
+
+SaveCommand.NotifyCanExecuteChanged();
+
+For example:
+
+IsBusy = true;
+SaveCommand.NotifyCanExecuteChanged();
+
+Then:
+
+IsBusy = true
+     ↓
+CanSave() = false
+     ↓
+Save button disabled
+
+9. ObservableProperty + RelayCommand
+
+This combination is extremely common in modern MAUI.
+public partial class LoginViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string username;
+
+    [ObservableProperty]
+    private string password;
+
+    [RelayCommand]
+    private async Task Login()
+    {
+        await LoginUserAsync();
+    }
+}
+
+<Entry
+    Text="{Binding Username}" />
+
+<Entry
+    Text="{Binding Password}"
+    IsPassword="True" />
+
+<Button
+    Text="Login"
+    Command="{Binding LoginCommand}" />
+The flow becomes:
+
+User enters Username
+       ↓
+ObservableProperty
+       ↓
+Username property changes
+       ↓
+ViewModel
+
+User taps Login
+       ↓
+LoginCommand
+       ↓
+Login()
+       ↓
+Service/API
+
+10. ICommand vs RelayCommand
+
+This is an important interview distinction.
+
+ICommand
+
+An interface/contract:
+
+ICommand
+
+It defines how commands behave.
+RelayCommand
+
+A concrete implementation provided by CommunityToolkit:
+
+RelayCommand
+
+It implements ICommand.
+So:
+
+ICommand
+   ↑
+   │ implements
+RelayCommand
+
+Similarly:
+
+ICommand
+   ↑
+   │
+AsyncRelayCommand
+
+is used for asynchronous operations.
+
+11. Command vs RelayCommand
+
+MAUI itself provides:
+
+Command
+Command<T>
+
+CommunityToolkit.Mvvm provides:
+RelayCommand
+RelayCommand<T>
+AsyncRelayCommand
+AsyncRelayCommand<T>
+For a modern MVVM architecture, CommunityToolkit.Mvvm generally reduces boilerplate significantly.
+
+12. Real-world MAUI example
+A production-style ViewModel might look like:
+public partial class RepairerViewModel : ObservableObject
+{
+    private readonly IRepairerService _repairerService;
+
+    [ObservableProperty]
+    private string searchText;
+
+    [ObservableProperty]
+    private bool isBusy;
+
+    public RepairerViewModel(IRepairerService repairerService)
+    {
+        _repairerService = repairerService;
+    }
+
+    [RelayCommand]
+    private async Task Search()
+    {
+        if (IsBusy)
+            return;
+
+        try
+        {
+            IsBusy = true;
+
+            await _repairerService.SearchAsync(SearchText);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+}
+
+XAML:
+
+<Entry
+    Text="{Binding SearchText}"
+    Placeholder="Search repairer" />
+
+<Button
+    Text="Search"
+    Command="{Binding SearchCommand}" />
+
+<ActivityIndicator
+    IsRunning="{Binding IsBusy}"
+    IsVisible="{Binding IsBusy}" />
+
+This gives you a clean:
+
+View
+ ↓
+Command
+ ↓
+ViewModel
+ ↓
+Service
+ ↓
+API
+
+architecture.
+
+"What is ICommand in MVVM?"
+
+Say:
+
+"ICommand provides a way to expose executable actions from the ViewModel to the UI. The View binds to the 
+command instead of handling UI events directly. It supports execution through Execute, conditional execution 
+through CanExecute, and UI notification through CanExecuteChanged."
+
+If asked:
+
+"Why use CommunityToolkit.Mvvm?"
+
+Say:
+
+"CommunityToolkit.Mvvm reduces MVVM boilerplate. ObservableObject provides property-change notification, 
+ObservableProperty generates observable properties, and RelayCommand or AsyncRelayCommand generates commands. 
+This keeps MAUI ViewModels concise while maintaining proper MVVM separation."
+Remember this:
+ICommand
+   ↓
+Command contract
+
+RelayCommand
+   ↓
+Synchronous command
+
+AsyncRelayCommand
+   ↓
+Async command
+
+ObservableObject
+   ↓
+Property change notifications
+
+ObservableProperty
+   ↓
+Generates observable properties
+
+RelayCommand attribute
+   ↓
+Generates commands 
+
+ObservableObject
+ObservableObject is a base class from CommunityToolkit.Mvvm that makes a class support property-change 
+notifications.
+
+It is commonly used as the base class for a MAUI ViewModel.
+using CommunityToolkit.Mvvm.ComponentModel;
+
+public partial class LoginViewModel : ObservableObject
+{
+}
+The main purpose is to implement:
+INotifyPropertyChanged
+so that when a ViewModel property changes, the UI can automatically update.
+
+1. Why do we need it?
+
+Suppose your XAML has:
+
+<Label Text="{Binding Username}" />
+And your ViewModel changes:
+Username = "Vipin";
+How does the Label know that Username changed?
+Through INotifyPropertyChanged.
+The flow is:
+ViewModel property changes
+        ↓
+PropertyChanged event
+        ↓
+MAUI Binding system
+        ↓
+UI updates
+
+2. Without ObservableObject
+
+You have to write the notification code manually:
+public class LoginViewModel : INotifyPropertyChanged
+{
+    private string _username;
+
+    public string Username
+    {
+        get => _username;
+        set
+        {
+            if (_username == value)
+                return;
+
+            _username = value;
+
+            PropertyChanged?.Invoke(
+                this,
+                new PropertyChangedEventArgs(nameof(Username)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+This works, but it's a lot of boilerplate.
+
+3. With ObservableObject
+public partial class LoginViewModel : ObservableObject
+{
+    private string _username;
+
+    public string Username
+    {
+        get => _username;
+        set => SetProperty(ref _username, value);
+    }
+}
+
+SetProperty() handles:
+
+Comparing old/new values
+Updating the backing field
+Raising PropertyChanged
+
+So this:
+
+set => SetProperty(ref _username, value);
+
+is essentially handling the repetitive notification logic for you.
+
+4. Even better: [ObservableProperty]
+
+CommunityToolkit.Mvvm provides a source generator.
+public partial class LoginViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string username;
+}
+
+The toolkit generates the public property and notification code.
+
+You can then use:
+<Label Text="{Binding Username}" />
+and:
+Username = "Vipin";
+The UI automatically receives the property-change notification.
+
+Important:
+
+The class must generally be declared as:
+
+public partial class LoginViewModel : ObservableObject
+
+because the toolkit's source generator generates additional code into the partial class.
+
+6. ObservableObject vs ObservableCollection
+This is an important distinction.
+
+ObservableObject
+
+Notifies when properties of an object change.
+
+Username changed
+       ↓
+PropertyChanged
+       ↓
+UI updates
+
+ObservableCollection<T>
+
+Notifies when items in a collection are added/removed/replaced.
+ObservableCollection<RepairerDetail> Repairers;
+For example:
+Repairers.Add(item);
+notifies the UI that an item was added.
+So:
+
+ObservableObject
+    → property changes
+
+ObservableCollection
+    → collection changes
+
+They solve different problems.
+
+7. Dependent properties
+
+This is especially useful in your MAUI ViewModels.
+
+Suppose:
+
+[ObservableProperty]
+private bool isBusy;
+
+public bool IsNotBusy => !IsBusy;
+XAML:
+
+<ActivityIndicator
+    IsRunning="{Binding IsBusy}" />
+
+<Button
+    Text="Save"
+    IsEnabled="{Binding IsNotBusy}" />
+When IsBusy changes, IsNotBusy also needs notification.
+
+With CommunityToolkit.Mvvm, you can use:
+
+[ObservableProperty]
+[NotifyPropertyChangedFor(nameof(IsNotBusy))]
+private bool isBusy;
+
+public bool IsNotBusy => !IsBusy;
+
+Now:
+
+IsBusy = true
+     ↓
+PropertyChanged(IsBusy)
+     ↓
+PropertyChanged(IsNotBusy)
+     ↓
+UI updates both
+
+That's a very useful production pattern.
+
+8. ObservableObject + Commands
+A typical MAUI ViewModel can combine everything:
+public partial class LoginViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string username;
+
+    [ObservableProperty]
+    private string password;
+
+    [ObservableProperty]
+    private bool isBusy;
+
+    [RelayCommand]
+    private async Task Login()
+    {
+        if (IsBusy)
+            return;
+
+        try
+        {
+            IsBusy = true;
+
+            await LoginAsync(Username, Password);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task LoginAsync(string username, string password)
+    {
+        // API call
+    }
+}
+
+XAML:
+
+<Entry Text="{Binding Username}" />
+
+<Entry
+    Text="{Binding Password}"
+    IsPassword="True" />
+
+<Button
+    Text="Login"
+    Command="{Binding LoginCommand}" />
+
+<ActivityIndicator
+    IsVisible="{Binding IsBusy}"
+    IsRunning="{Binding IsBusy}" />
+
+This is a very typical modern MAUI MVVM pattern.
+
+9. ObservableObject vs INotifyPropertyChanged
+
+They're not competing technologies.
+
+ObservableObject implements INotifyPropertyChanged for you.
+
+INotifyPropertyChanged
+        ↑
+        │ implements
+        │
+ObservableObject
+        ↑
+        │ inherits
+        │
+LoginViewModel
+
+9. ObservableObject vs INotifyPropertyChanged
+
+They're not competing technologies.
+
+ObservableObject implements INotifyPropertyChanged for you.
+
+INotifyPropertyChanged
+        ↑
+        │ implements
+        │
+ObservableObject
+        ↑
+        │ inherits
+        │
+LoginViewModel
+
+"What is ObservableObject in CommunityToolkit.Mvvm?"
+
+A strong answer is:
+
+"ObservableObject is a base class provided by CommunityToolkit.Mvvm that implements INotifyPropertyChanged. 
+It simplifies property-change notification in ViewModels. Instead of manually implementing backing fields 
+and raising PropertyChanged, we can use SetProperty or the [ObservableProperty] source generator. 
+This allows MAUI's binding system to automatically update the UI when ViewModel properties change."
+
+Remember:
+ObservableObject
+        ↓
+INotifyPropertyChanged
+        ↓
+Property changed notification
+        ↓
+MAUI Binding
+        ↓
+UI updates
+
+And the modern Toolkit pattern is:
+
+ObservableObject
+      +
+[ObservableProperty]
+      +
+[RelayCommand]
+      ↓
+Clean MAUI ViewModel
+ 
+WeakReferenceMessenger 
+
+WeakReferenceMessenger is part of CommunityToolkit.Mvvm and is used for communication between different 
+ViewModels, Views, and other objects without directly coupling them.
+It implements the messenger/pub-sub pattern.
+
+The key idea:
+
+Sender
+  ↓
+Message
+  ↓
+Messenger
+  ↓
+Receiver
+
+The sender doesn't need to know who receives the message.
+
+1. Why do we need it?
+
+Imagine you have:
+
+Page A
+  ↓
+LoginViewModel
+
+Page B
+  ↓
+HomeViewModel
+
+After login, LoginViewModel wants to tell HomeViewModel:
+
+"User has logged in. Refresh the data."
+
+You could directly reference HomeViewModel, but that creates tight coupling.
+
+Instead:
+
+LoginViewModel
+      ↓
+"LoginCompletedMessage"
+      ↓
+WeakReferenceMessenger
+      ↓
+HomeViewModel
+
+Now they don't know about each other.
+2. Define a message
+
+For example:
+
+public sealed class LoginCompletedMessage
+{
+    public string UserId { get; }
+
+    public LoginCompletedMessage(string userId)
+    {
+        UserId = userId;
+    }
+}
+
+3. Send the message
+
+From your Login ViewModel:
+
+WeakReferenceMessenger.Default.Send(
+    new LoginCompletedMessage("123"));
+
+The messenger broadcasts the message to registered recipients.
+
+4. Receive the message
+
+Your Home ViewModel can register:
+
+WeakReferenceMessenger.Default.Register<LoginCompletedMessage>(
+    this,
+    (recipient, message) =>
+    {
+        var userId = message.UserId;
+
+        RefreshData();
+    });
+
+Now whenever:
+
+WeakReferenceMessenger.Default.Send(
+    new LoginCompletedMessage("123"));
+
+is executed, the registered receiver gets it.
+
+5. The flow
+LoginViewModel
+     │
+     │ Send(LoginCompletedMessage)
+     ▼
+WeakReferenceMessenger
+     │
+     │ dispatch
+     ▼
+HomeViewModel
+     │
+     ▼
+RefreshData()
+
+The Login ViewModel doesn't need:
+
+HomeViewModel homeViewModel;
+
+This is the major benefit.
+
+6. Why is it called WeakReferenceMessenger?
+
+The important word is WeakReference.
+
+The messenger uses weak references for recipients so that registering a recipient 
+doesn't necessarily keep that object alive forever.
+
+This helps reduce the risk of a messenger registration causing a memory leak when a 
+ViewModel/View should otherwise be garbage-collected.
+
+Conceptually:
+
+Normal strong reference:
+
+Messenger ──────────────> ViewModel
+                           ↑
+                     stays referenced
+
+
+Weak reference:
+
+Messenger - - - - - - - -> ViewModel
+                           ↑
+                     can be collected
+                     when no strong refs remain
+
+This is why WeakReferenceMessenger is generally preferable to building your own global static event system.
+
+7. Real MAUI example
+
+Imagine your app has:
+
+RepairerListPage
+RepairerDetailsPage
+
+After saving a repairer:
+
+RepairerDetailsViewModel
+        ↓
+RepairerUpdatedMessage
+        ↓
+WeakReferenceMessenger
+        ↓
+RepairerListViewModel
+        ↓
+RefreshRepairers()
+
+Message:
+
+public sealed class RepairerUpdatedMessage
+{
+    public int RepairerId { get; }
+
+    public RepairerUpdatedMessage(int repairerId)
+    {
+        RepairerId = repairerId;
+    }
+}
+
+Send:
+
+WeakReferenceMessenger.Default.Send(
+    new RepairerUpdatedMessage(repairer.Id));
+
+Receive:
+
+WeakReferenceMessenger.Default.Register<RepairerUpdatedMessage>(
+    this,
+    (recipient, message) =>
+    {
+        RefreshRepairer(message.RepairerId);
+    });
+
+This is useful when two parts of your application need to react to the same 
+event but shouldn't directly depend on each other.
+
+8. Strongly typed messages
+You can also use Toolkit message types such as:
+ValueChangedMessage<T>
+For example:
+WeakReferenceMessenger.Default.Send(
+    new ValueChangedMessage<int>(123));
+Receive:
+
+WeakReferenceMessenger.Default.Register<ValueChangedMessage<int>>(
+    this,
+    (recipient, message) =>
+    {
+        int id = message.Value;
+    });
+You can also define your own message classes when the message has more meaningful domain information.
+
+For production code, I generally prefer a named message such as:
+
+RepairerUpdatedMessage
+
+rather than an unexplained:
+
+ValueChangedMessage<int>
+
+because the intent is clearer.
+
+9. Unregistering
+
+You can explicitly unregister:
+
+WeakReferenceMessenger.Default.Unregister<LoginCompletedMessage>(this);
+
+Or all messages for the recipient:
+
+WeakReferenceMessenger.Default.UnregisterAll(this);
+
+With weak references, you don't always need manual unregistering purely for memory management, 
+but explicit lifecycle management can still be useful when you want a recipient to stop responding 
+while it remains alive.
+
+10. WeakReferenceMessenger vs direct service injection
+
+This is important at senior level.
+
+Don't use Messenger for everything.
+
+Use DI/service when:
+ViewModel
+   ↓
+IRepairerService
+   ↓
+API
+
+The ViewModel needs to call the service.
+
+Use Messenger when:
+ViewModel A
+     ↓
+notification/event
+     ↓
+ViewModel B
+
+The sender doesn't need to know the receiver.
+
+So:
+
+DI is primarily for dependencies; Messenger is primarily for loosely coupled notifications/messages.
+
+11. Messenger vs events
+
+Traditional event:
+
+someService.DataUpdated += OnDataUpdated;
+
+This creates a direct relationship:
+Subscriber
+    ↑
+    │ event
+    │
+Publisher
+
+Messenger:
+
+Publisher
+    ↓
+Messenger
+    ↓
+Subscriber
+
+The publisher doesn't need to hold a direct reference to the subscriber.
+
+12. Messenger vs Shell navigation
+
+Don't confuse these.
+For navigation:
+
+await Shell.Current.GoToAsync("DetailsPage");
+For communication:
+
+WeakReferenceMessenger.Default.Send(
+    new RepairerUpdatedMessage(id));
+
+You might even use both:
+
+Save Page
+   ↓
+Save successful
+   ↓
+Send RepairerUpdatedMessage
+   ↓
+Go back
+   ↓
+Repairer List receives message
+   ↓
+Refresh
+
+"What is WeakReferenceMessenger in CommunityToolkit.Mvvm?"
+
+Say:
+
+"WeakReferenceMessenger is a lightweight, loosely coupled messaging mechanism provided by CommunityToolkit.Mvvm.
+It allows one component to send strongly typed messages without having a direct reference to the receiving 
+component. Recipients register for specific message types and handle them when they're sent. 
+It uses weak references for recipients, which helps avoid keeping ViewModels or Views alive unnecessarily."
+
+If they ask:
+
+"When would you use it?"
+
+"I use it for cross-component notifications where direct coupling isn't desirable—for example, 
+notifying a list ViewModel that an item was updated on a details page, notifying the UI about 
+authentication state changes, or communicating application-wide events. I wouldn't use it as a 
+replacement for dependency injection or service calls."
+
+Remember:
+DI
+→ "I need this dependency."
+
+Messenger
+→ "I want to notify whoever is interested."
+
+Shell
+→ "I want to navigate somewhere."
+
+That's the distinction interviewers usually want to hear.
+
+Lifecycle events
+Platform-specific code using:
+#if ANDROID
+#if IOS
+Platforms/Android
+Platforms/iOS
+
+
+2. MVVM — very important
+
+Be ready for questions like:
+
+Why use MVVM in MAUI?
+MVVM = Model–View–ViewModel
+
+The main reason to use MVVM in MAUI is to separate UI from application/business logic, making the application easier to maintain, test, and scale.
+The basic architecture is:
+
+View
+  │
+  │ Data Binding / Commands
+  ↓
+ViewModel
+  │
+  │ Services
+  ↓
+Model / API / Database
+
+1. Separation of concerns
+
+Without MVVM, you may put API calls, validation, navigation, and UI logic directly inside ContentPage.xaml.cs.
+
+private async void Login_Clicked(...)
+{
+    var result = await api.LoginAsync(...);
+
+    if (result.Success)
+        await Navigation.PushAsync(new HomePage());
+}
+
+As the application grows, the page becomes difficult to maintain.
+
+With MVVM:
+
+LoginPage
+    ↓
+LoginViewModel
+    ↓
+IAuthService
+    ↓
+API
+
+The View is responsible mainly for displaying UI, while the ViewModel handles the screen's state and commands.
+
+"Why use MVVM in .NET MAUI?"
+
+Answer:
+
+"I use MVVM to separate the UI from application logic and state. The View is responsible for presentation, the ViewModel exposes 
+bindable properties and commands, and services handle business operations such as API or database access. MAUI's data binding and 
+CommunityToolkit.Mvvm make this pattern efficient through ObservableObject, ObservableProperty, and RelayCommand. It improves maintainability, 
+testability, reusability, and keeps the application logic largely platform-independent."
+
+If they ask "Why not put everything in code-behind?"
+
+Say:
+
+"Code-behind is fine for UI-specific behavior, but putting API calls, validation, state management, and business logic there tightly couples 
+the logic to the UI and makes testing and maintenance harder. MVVM separates those responsibilities."
+
+
+How does data binding work?
+2. Data Binding
+
+MVVM works very well with MAUI's binding system.
+
+View:
+<Entry Text="{Binding Username}" />
+
+<Label Text="{Binding ErrorMessage}" />
+
+<ActivityIndicator
+    IsRunning="{Binding IsBusy}" />
+
+ViewModel:
+
+[ObservableProperty]
+private string username;
+
+[ObservableProperty]
+private string errorMessage;
+
+[ObservableProperty]
+private bool isBusy;
+
+When:
+
+IsBusy = true;
+
+changes, the UI can automatically update.
+
+You don't have to manually find controls and modify them.
+
+3. Commands instead of event handlers
+
+Instead of:
+
+<Button
+    Text="Login"
+    Clicked="OnLoginClicked" />
+
+you can use:
+
+<Button
+    Text="Login"
+    Command="{Binding LoginCommand}" />
+
+ViewModel:
+
+[RelayCommand]
+private async Task Login()
+{
+    // Login logic
+}
+
+This keeps the interaction logic in the ViewModel instead of the code-behind.
+
+4. Testability
+
+This is one of the biggest architectural advantages.
+
+Suppose your ViewModel has:
+
+public async Task Login()
+{
+    await _authService.LoginAsync(Username, Password);
+}
+
+You can mock:
+
+IAuthService
+
+and test the ViewModel without launching Android/iOS.
+
+Unit Test
+   ↓
+LoginViewModel
+   ↓
+Mock IAuthService
+
+You don't need:
+
+Android emulator
+iOS simulator
+UI automation
+
+for basic ViewModel/business-logic testing.
+
+5. Reusability
+
+The same ViewModel logic can potentially be used with different UI implementations.
+
+For example:
+
+LoginViewModel
+     ↑
+     │
+ ┌───┴────┐
+ │        │
+Android   iOS
+ View      View
+
+The UI can differ while the ViewModel logic remains largely the same.
+
+6. Better maintainability
+
+Imagine a large application:
+
+Pages
+ ├── LoginPage
+ ├── HomePage
+ ├── RepairerPage
+ ├── ClaimPage
+ └── ProfilePage
+
+ViewModels
+ ├── LoginViewModel
+ ├── HomeViewModel
+ ├── RepairerViewModel
+ ├── ClaimViewModel
+ └── ProfileViewModel
+
+Services
+ ├── IAuthService
+ ├── IRepairerService
+ ├── IClaimService
+ └── IProfileService
+
+Each layer has a clear responsibility.
+
+That makes it easier for multiple developers to work on the application.
+
+7. Dependency Injection works naturally with MVVM
+
+For example:
+
+public class RepairerViewModel
+{
+    private readonly IRepairerService _repairerService;
+
+    public RepairerViewModel(
+        IRepairerService repairerService)
+    {
+        _repairerService = repairerService;
+    }
+}
+Register it:
+
+builder.Services.AddTransient<RepairerViewModel>();
+builder.Services.AddSingleton<IRepairerService, RepairerService>();
+Now the ViewModel doesn't create the service itself:
+
+// ❌ Avoid
+var service = new RepairerService();
+
+Instead, DI provides it.
+8. State management becomes cleaner
+
+Suppose your Repairer screen has:
+Loading
+Error
+Empty
+Data
+
+Your ViewModel can represent that state:
+
+[ObservableProperty]
+private bool isBusy;
+
+[ObservableProperty]
+private bool hasError;
+
+[ObservableProperty]
+private bool hasData;
+
+[ObservableProperty]
+private string errorMessage;
+
+Then the UI binds to those properties:
+
+<ActivityIndicator
+    IsVisible="{Binding IsBusy}"
+    IsRunning="{Binding IsBusy}" />
+
+<Label
+    Text="{Binding ErrorMessage}"
+    IsVisible="{Binding HasError}" />
+
+<CollectionView
+    ItemsSource="{Binding Repairers}"
+    IsVisible="{Binding HasData}" />
+
+This is much cleaner than manually showing/hiding controls from code-behind.
+
+
+
+
+
+What happens when a property changes?
+What happens step by step?
+
+Suppose your ViewModel has:
+
+public partial class LoginViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string username;
+}
+
+And XAML:
+
+<Entry Text="{Binding Username}" />
+<Label Text="{Binding Username}" />
+
+When you do:
+
+Username = "Vipin";
+
+the flow is:
+
+Username changes
+      ↓
+ObservableObject detects the change
+      ↓
+PropertyChanged event is raised
+      ↓
+MAUI Binding system receives the event
+      ↓
+UI elements bound to Username are updated
+Without ObservableObject
+
+You would have to manually raise PropertyChanged:
+
+public class LoginViewModel : INotifyPropertyChanged
+{
+    private string _username;
+
+    public string Username
+    {
+        get => _username;
+        set
+        {
+            if (_username == value)
+                return;
+
+            _username = value;
+
+            PropertyChanged?.Invoke(
+                this,
+                new PropertyChangedEventArgs(nameof(Username)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+This event is what tells MAUI:
+
+"The value of Username has changed. Refresh anything bound to it."
+
+Important interview point
+
+ObservableCollection<T> is different.
+
+Property changes → INotifyPropertyChanged
+Collection changes (Add/Remove/Replace) → INotifyCollectionChanged, provided by ObservableCollection<T>
+
+For example:
+
+Username = "Vipin";          // PropertyChanged
+Repairers.Add(repairer);     // CollectionChanged
+Senior interview answer
+
+"When a ViewModel property changes, INotifyPropertyChanged raises the PropertyChanged event. MAUI's binding engine listens to that event 
+and updates the UI elements bound to that property. CommunityToolkit.Mvvm's ObservableObject simplifies this by providing SetProperty and 
+source-generated properties through [ObservableProperty]."
+
+ObservableCollection vs List?
+In .NET MAUI, the key difference is UI notification.
+
+Feature	List<T>	ObservableCollection<T>
+Stores items	✅	✅
+Add/Remove items	✅	✅
+Notifies UI when collection changes	❌	✅
+Implements INotifyCollectionChanged	❌	✅
+Good for CollectionView.ItemsSource with dynamic updates	❌	✅
+Performance overhead	Lower	Slightly higher
+Example with List<T>
+public List<RepairerDetail> Repairers { get; set; }
+
+If you do:
+
+Repairers.Add(newRepairer);
+
+the list changes, but MAUI doesn't automatically know that the collection changed.
+
+So a CollectionView may not update.
+
+ObservableCollection<T>
+public ObservableCollection<RepairerDetail> Repairers { get; set; }
+    = new();
+
+Now:
+
+Repairers.Add(newRepairer);
+
+causes:
+
+Add()
+ ↓
+CollectionChanged event
+ ↓
+MAUI Binding Engine
+ ↓
+CollectionView updates
+
+Similarly:
+
+Repairers.Remove(item);
+Repairers.Clear();
+Repairers.Insert(0, item);
+
+notify the UI.
+
+Important distinction
+
+ObservableCollection only observes changes to the collection, not changes inside an item.
+
+For example:
+
+Repairers[0].Name = "New Name";
+
+For the UI to detect that, RepairerDetail itself should implement:
+
+INotifyPropertyChanged
+
+So:
+
+ObservableCollection
+    ↓
+Detects Add / Remove / Clear / Move / Replace
+
+INotifyPropertyChanged on item
+    ↓
+Detects item property changes
+Interview answer
+
+"I use List<T> when the collection is mostly static or I don't need UI notifications. I use ObservableCollection<T> when a bound collection can 
+change at runtime because it raises CollectionChanged events that MAUI's binding engine listens to. For item-level property changes, 
+the item itself should implement INotifyPropertyChanged."
+
+ICommand vs Command?
+|                      | `ICommand`                   | `Command`                 |
+| -------------------- | ---------------------------- | ------------------------- |
+| Type                 | Interface                    | Concrete class            |
+| Namespace            | `System.Windows.Input`       | `Microsoft.Maui.Controls` |
+| Purpose              | Defines the command contract | Implements the command    |
+| Can execute action   | ❌ By itself                  | ✅                         |
+| `CanExecute` support | Defines it                   | Implements it             |
+
+
+How do you prevent memory leaks in MVVM?
+1. ICommand — contract
+public ICommand LoginCommand { get; }
+
+ICommand defines what a command should provide:
+
+Execute()
+CanExecute()
+CanExecuteChanged
+
+But ICommand itself doesn't tell MAUI what code to execute.
+
+2. Command — implementation
+
+You can create an actual command using:
+
+public ICommand LoginCommand { get; }
+
+public LoginViewModel()
+{
+    LoginCommand = new Command(Login);
+}
+
+private void Login()
+{
+    // Login logic
+}
+
+XAML:
+
+<Button
+    Text="Login"
+    Command="{Binding LoginCommand}" />
+
+Flow:
+
+Button clicked
+     ↓
+ICommand.Execute()
+     ↓
+Command.Execute()
+     ↓
+Login()
+CanExecute
+
+You can also control whether the button can execute:
+
+public ICommand SaveCommand { get; }
+
+public LoginViewModel()
+{
+    SaveCommand = new Command(
+        Save,
+        CanSave);
+}
+
+private void Save()
+{
+}
+
+private bool CanSave()
+{
+    return !string.IsNullOrWhiteSpace(Username);
+}
+
+When CanSave() returns false, the UI can disable the button.
+
+Where does RelayCommand fit?
+
+Since you're using CommunityToolkit.Mvvm, you'll often see:
+
+[RelayCommand]
+private async Task LoginAsync()
+{
+    await LoginUserAsync();
+}
+
+The Toolkit generates an ICommand implementation for you, typically using RelayCommand / AsyncRelayCommand.
+
+So think:
+
+ICommand
+   ↓
+Interface / contract
+
+Command
+   ↓
+MAUI implementation
+
+RelayCommand
+   ↓
+CommunityToolkit implementation
+
+AsyncRelayCommand
+   ↓
+CommunityToolkit implementation for async operations
+⭐ Senior interview answer
+
+"ICommand is an interface that defines the command contract, while Command is a concrete .NET MAUI implementation of that interface. 
+I can expose a property as ICommand while instantiate it with Command. In CommunityToolkit.Mvvm, I generally prefer RelayCommand or 
+AsyncRelayCommand, especially for async ViewModel operations."
+ 
+
+Example:
+
+public partial class LoginViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string username;
+
+    [ObservableProperty]
+    private string password;
+
+    [RelayCommand]
+    private async Task LoginAsync()
+    {
+        // Login logic
+    }
+}
+
+Be able to explain what the source generator creates behind [ObservableProperty] and [RelayCommand].
+
+3. API + Authentication
+
+This is especially important for a production MAUI app.
+
+Prepare:
+
+HttpClient
+1. HttpClient
+
+HttpClient is used to communicate with REST APIs over HTTP/HTTPS.
+Example:
+public class VehicleService
+{
+    private readonly HttpClient _httpClient;
+
+    public VehicleService(HttpClient httpClient)
+    {
+        _httpClient = httpClient;
+    }
+
+    public async Task<Vehicle?> GetVehicleAsync(int id)
+    {
+        var response = await _httpClient.GetAsync($"vehicles/{id}");
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<Vehicle>();
+    }
+}
+
+2. Why not create HttpClient every time?
+A common bad approach:
+2. Why not create HttpClient every time?
+
+A common bad approach:
+
+public async Task GetData()
+{
+    using var client = new HttpClient();
+
+    await client.GetAsync("https://api.example.com/data");
+}
+
+Creating clients repeatedly can cause connection/resource-management problems and prevents proper centralized configuration.
+Instead, use DI.
+
+builder.Services.AddHttpClient<VehicleService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.example.com/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+Then:
+
+public VehicleService(HttpClient httpClient)
+{
+    _httpClient = httpClient;
+}
+
+IHttpClientFactory
+IHttpClientFactory is the recommended way to create/configure HttpClient instances in modern .NET.
+
+It provides:
+
+centralized configuration
+dependency injection
+handler management
+logging
+resilience integration
+named clients
+typed clients
+
+builder.Services.AddHttpClient("Api", client =>
+{
+    client.BaseAddress =
+        new Uri("https://api.example.com/");
+
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+Then:
+
+public class VehicleService
+{
+    private readonly HttpClient _client;
+
+    public VehicleService(IHttpClientFactory factory)
+    {
+        _client = factory.CreateClient("Api");
+    }
+}
+IHttpClientFactory provides centrally configured and DI-managed HttpClient instances. I prefer typed clients for larger applications 
+because each API service gets its own strongly typed HTTP abstraction.
+
+
+REST API 
+REST is an architectural style for communicating with resources over HTTP.
+JWT Authentication
+JWT = JSON Web Token.
+A JWT commonly contains:
+
+
+JWT authentication
+Refresh tokens
+Access token expiration
+Secure token storage
+SecureStorage
+HTTP status codes
+Retry policies
+Timeout handling
+Network connectivity
+Offline scenarios
+Serialization/deserialization
+Global API error handling
+
+Typical interview question:
+
+What happens if your JWT expires while the user is using the app?
+
+A strong answer should discuss:
+
+API request
+   ↓
+401 Unauthorized
+   ↓
+Refresh token
+   ↓
+Get new access token
+   ↓
+Retry original request
+   ↓
+If refresh fails → logout
+If the JWT access token expires while the user is using the app, the API returns 401. I intercept that response in an authentication handler, 
+use the refresh token to obtain a new access token, securely store the new tokens, and retry the original request. I also synchronize concurrent 
+refresh operations so multiple API calls don't refresh the token simultaneously. If the refresh token is invalid or expired, I clear the 
+authentication state and redirect the user to login. The user normally doesn't need to log in again unless the refresh process fails.
+
+4. MAUI Navigation
+
+Know:
+
+Shell navigation
+Route registration
+Query parameters
+Passing objects between pages
+Navigation stack
+Modal navigation
+Back navigation
+Deep linking
+Handling navigation from ViewModels
+
+Example:
+
+Routing.RegisterRoute(
+    nameof(ContractDetailsPage),
+    typeof(ContractDetailsPage));
+
+And:
+
+await Shell.Current.GoToAsync(
+    $"{nameof(ContractDetailsPage)}?contractId={id}");
+5. Performance — Senior-level topic
+
+This is where interviewers can distinguish a senior developer from a mid-level developer.
+
+Prepare:
+
+XAML performance
+CollectionView optimization
+Virtualization
+Compiled bindings
+Reducing visual tree depth
+Lazy loading
+Async/await
+Avoiding work on UI thread
+Image caching/resizing
+Large API responses
+Pagination
+Memory leaks
+CancellationToken
+Task.Run() — when it is appropriate and when it isn't
+Task.Run() is primarily useful for CPU-bound work that would otherwise block the UI or calling thread. For example, expensive calculations, 
+image processing, or large data transformations can be moved to a ThreadPool thread using Task.Run(). I don't use it around naturally 
+asynchronous I/O such as HttpClient, database async APIs, or file async APIs because those operations already release the calling thread 
+while waiting. I also avoid using Task.Run() for UI updates because UI work belongs on the UI thread
+
+CPU-bound  → Task.Run() may be appropriate
+I/O-bound  → async/await directly
+UI work    → UI thread
+
+Task.Run() is not a synonym for async. It is a way to offload work to the ThreadPool; async/await is primarily about composing asynchronous 
+operations without blocking while they wait.
+
+For example:
+
+[RelayCommand]
+private async Task LoadDataAsync()
+{
+    IsBusy = true;
+
+    try
+    {
+        var data = await service.GetDataAsync();
+        Items = data;
+    }
+    finally
+    {
+        IsBusy = false;
+    }
+}
+
+Be prepared for:
+
+"Your CollectionView has 500 items and scrolling is laggy. How would you diagnose and fix it?"
+
+6. Firebase / Push Notifications
+
+Given your experience, this should be a major interview area.
+
+Prepare:
+
+FCM architecture
+Firebase Cloud Messaging (FCM) is Google's push notification service used to send messages from a backend to Android, iOS, 
+and other supported clients.
+Typical architecture:
+
+                    ┌──────────────────────┐
+                    │      Your Backend    │
+                    │ .NET API / Service   │
+                    └──────────┬───────────┘
+                               │
+                         Send message
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │       Firebase       │
+                    │        FCM           │
+                    └───────┬───────┬──────┘
+                            │       │
+                     Android│       │iOS
+                            │       │
+                            ▼       ▼
+                       FCM SDK    APNs
+                            │       │
+                            ▼       ▼
+                       Android    iPhone
+For Android, FCM communicates directly with the device.
+For iOS:
+
+Backend
+   ↓
+FCM
+   ↓
+APNs
+   ↓
+iPhone
+So FCM doesn't replace APNs on iOS. FCM acts as the messaging layer while Apple's APNs delivers the notification to the iOS device.
+
+Registration token
+When the app registers with FCM, Firebase generates a registration token identifying that particular app installation/device.
+Then the backend can send to one or multiple devices.
+
+Important
+
+The token is not permanent.
+
+It can change because of:
+
+app reinstall
+app data cleared
+Firebase/security changes
+device restoration
+token rotation
+other Firebase SDK conditions
+
+Therefore the app should handle token refresh.
+3. Token lifecycle
+App starts
+   ↓
+Firebase initialized
+   ↓
+FCM generates token
+   ↓
+App receives token
+   ↓
+Send token to backend
+   ↓
+Backend stores token
+   ↓
+Backend sends notification
+   ↓
+FCM delivers notification
+In MAUI, conceptually:
+var token = await FirebaseMessaging
+    .GetInstance(FirebaseApp.Instance)
+    .GetToken();
+
+
+Android notification channel
+Android 8.0+ requires notifications to belong to a Notification Channel.
+Example:
+Channel
+ ├── ID: general_notifications
+ ├── Name: General Notifications
+ ├── Importance: High
+ └── Sound: Default
+ Why do we need notification channels?
+
+Because Android allows users to control notification behavior per channel, such as:
+sound
+vibration
+importance
+visibility
+
+
+Foreground vs background notification
+iOS APNs + FCM
+GoogleService-Info.plist
+google-services.json
+|                    | iOS                        | Android                |
+| ------------------ | -------------------------- | ---------------------- |
+| Firebase config    | `GoogleService-Info.plist` | `google-services.json` |
+| Apple push service | APNs                       | Not applicable         |
+| Firebase messaging | FCM                        | FCM                    |
+| App identifier     | Bundle ID                  | Package name           |
+| Push provider      | APNs via FCM               | FCM                    |
+
+
+
+Development vs production Firebase configuration
+Sender ID
+The Sender ID, historically represented by the Firebase/Google Cloud project number, identifies the Firebase project authorized to send messages.
+Conceptually:
+
+Firebase Project
+      ↓
+Project Number / Sender ID
+      ↓
+FCM
+      ↓
+Device token
+
+If the registration token belongs to Firebase project A but you're trying to send using credentials/project B, you can get:
+
+SENDER_ID_MISMATCH
+Example
+
+Suppose:
+
+Device token → Firebase Project A
+
+but backend sends using:
+
+Firebase Project B
+
+Then:
+
+❌ SENDER_ID_MISMATCH
+
+What does SENDER_ID_MISMATCH mean?
+
+Interview answer:
+
+“SENDER_ID_MISMATCH occurs when the FCM registration token is associated with one Firebase project/sender ID, but the message is being sent 
+using credentials or configuration belonging to a different Firebase project.”
+Typical causes:
+
+Staging token
+       +
+Production Firebase credentials
+       =
+SENDER_ID_MISMATCH
+
+or:
+
+Wrong google-services.json
+Wrong Firebase project
+Wrong service account
+Wrong Sender ID
+
+APNs token
+When an iOS application registers for remote notifications, Apple provides an APNs device token.
+Conceptually:
+
+App
+ ↓
+registerForRemoteNotifications
+ ↓
+Apple
+ ↓
+APNs Token
+FCM then associates the Firebase registration token with the APNs token.
+
+Conceptually:
+
+iPhone
+ ├── APNs Token
+ └── FCM Registration Token
+
+This is why an error such as:
+
+Declining request for FCM Token since no APNS Token specified
+
+is significant.
+
+It generally means Firebase is attempting to obtain/use an FCM token for iOS but the APNs registration/token isn't available yet.
+
+11. Why APNs token is important
+
+Your iOS push flow needs:
+
+Request notification permission
+          ↓
+Register with APNs
+          ↓
+Receive APNs token
+          ↓
+Provide/register it with Firebase
+          ↓
+Firebase obtains/uses FCM token
+          ↓
+Backend sends notification
+
+If APNs registration isn't correctly configured, FCM token acquisition or delivery can fail.
+
+12. GoogleService-Info.plist
+
+This is the Firebase configuration file for Apple platforms.
+
+Usually:
+
+Platforms/
+   iOS/
+      GoogleService-Info.plist
+
+It contains Firebase project/application configuration such as:
+
+GOOGLE_APP_ID
+GCM_SENDER_ID
+API_KEY
+PROJECT_ID
+BUNDLE_ID
+
+The values identify the Firebase project and iOS application.
+
+13. google-services.json
+
+For Android, Firebase uses:
+
+google-services.json
+
+Typically:
+
+Platforms/
+   Android/
+      google-services.json
+
+It contains Android Firebase configuration.
+
+Important fields include:
+
+project_id
+project_number
+mobilesdk_app_id
+package_name
+api_key
+
+14. GoogleService-Info.plist vs google-services.json
+
+|                    | iOS                        | Android                |
+| ------------------ | -------------------------- | ---------------------- |
+| Firebase config    | `GoogleService-Info.plist` | `google-services.json` |
+| Apple push service | APNs                       | Not applicable         |
+| Firebase messaging | FCM                        | FCM                    |
+| App identifier     | Bundle ID                  | Package name           |
+| Push provider      | APNs via FCM               | FCM                    |
+
+15. Development vs Production Firebase Configuration
+
+This is especially relevant to your AutoGuard/Best4 work.
+You might have:
+
+Development Firebase
+        ↓
+staging API
+        ↓
+staging notifications
+
+and:
+
+Production Firebase
+        ↓
+production API
+        ↓
+production notifications
+You should not accidentally send production notifications using a staging Firebase project or vice versa.
+
+For example:
+
+Debug
+ ↓
+GoogleService-Info.Staging.plist
+ ↓
+Staging Firebase Project
+
+and:
+
+Release
+ ↓
+GoogleService-Info.plist
+ ↓
+Production Firebase Project
+In MAUI, this can be handled using MSBuild conditions.
+
+Conceptually:
+
+<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <BundleResource Include="Platforms\iOS\GoogleService-Info.Staging.plist">
+        <LogicalName>GoogleService-Info.plist</LogicalName>
+    </BundleResource>
+</ItemGroup>
+
+<ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <BundleResource Include="Platforms\iOS\GoogleService-Info.Production.plist">
+        <LogicalName>GoogleService-Info.plist</LogicalName>
+    </BundleResource>
+</ItemGroup>
+
+The same principle applies to Android.
+
+16. What is Sender ID?
+
+This is another important one because you've encountered:
+
+SENDER_ID_MISMATCH
+
+The Sender ID, historically represented by the Firebase/Google Cloud project number, identifies the Firebase project authorized to send messages.
+
+Example
+
+Suppose:
+
+Device token → Firebase Project A
+
+but backend sends using:
+
+Firebase Project B
+
+Then:
+
+❌ SENDER_ID_MISMATCH
+
+17. What does SENDER_ID_MISMATCH mean?
+
+Interview answer:
+
+“SENDER_ID_MISMATCH occurs when the FCM registration token is associated with one Firebase project/sender ID, but the message is being sent using 
+credentials or configuration belonging to a different Firebase project.”
+
+Typical causes:
+
+Staging token
+       +
+Production Firebase credentials
+       =
+SENDER_ID_MISMATCH
+
+or:
+
+Wrong google-services.json
+Wrong Firebase project
+Wrong service account
+Wrong Sender ID
+
+18. Firebase Console
+
+Firebase Console allows you to manage:
+
+Firebase projects
+Android/iOS apps
+Cloud Messaging
+Analytics
+Crashlytics
+Authentication
+Firestore
+Remote Config
+App configuration
+
+For push notifications, you can use:
+Firebase Console
+       ↓
+Messaging
+       ↓
+Create campaign/message
+       ↓
+Select target
+       ↓
+Send
+
+It's particularly useful for testing whether the issue is:
+
+Firebase configuration
+        vs
+your backend
+        vs
+your application
+
+
+Notification payload vs data payload
+Token refresh
+19. Token Refresh
+
+Your app needs to handle token changes.
+
+Conceptually:
+
+void OnTokenRefresh(string newToken)
+{
+    // Send updated token to backend
+}
+
+Backend:
+
+Old Token
+   ↓
+replace/update
+   ↓
+New Token
+
+Don't create duplicate device registrations every time.
+
+A robust design uses something like:
+
+UserId + DeviceId
+
+as the logical identity and updates the FCM token.
+
+20. FCM token security
+
+An FCM registration token isn't equivalent to a user password.
+
+But you should still treat it as sensitive infrastructure data.
+
+Don't expose your:
+
+Firebase Admin private key
+Service Account JSON
+APNs private key
+
+inside the mobile app.
+
+Very important interview point
+
+The mobile app should never contain Firebase Admin credentials.
+
+Correct:
+
+Mobile App
+    ↓
+Your Backend
+    ↓
+Firebase Admin SDK / FCM
+
+Incorrect:
+
+Mobile App
+    ↓
+Firebase Admin private credentials
+    ↓
+FCM
+
+21. Firebase Admin SDK
+
+Your backend can use Firebase Admin SDK to send messages.
+
+Architecture:
+
+.NET Backend
+     ↓
+Firebase Admin SDK
+     ↓
+FCM
+     ↓
+Device
+For example, conceptually:
+
+var message = new Message
+{
+    Token = deviceToken,
+    Notification = new Notification
+    {
+        Title = "Claim Updated",
+        Body = "Your claim was approved."
+    }
+};
+
+Then send through Firebase.
+
+
+Firebase Console
+Firebase + AWS SNS architecture
+22. FCM + AWS SNS
+
+This is another strong Senior/Architect-level question.
+
+AWS SNS can act as a notification abstraction layer.
+
+Architecture:
+                 ┌───────────────┐
+                 │ .NET Backend  │
+                 └───────┬───────┘
+                         │
+                         ▼
+                  ┌─────────────┐
+                  │   AWS SNS   │
+                  └──────┬──────┘
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+              ▼                     ▼
+             FCM                   APNs
+              │                     │
+              ▼                     ▼
+          Android                 iOS
+
+SNS can integrate with platform-specific push providers.
+
+Another architecture is:
+.NET Backend
+      ↓
+Notification Service
+      ↓
+ ┌────┴─────┐
+ │          │
+ FCM       SNS
+ │          │
+Android    APNs/FCM
+
+The exact architecture depends on the organization's cloud strategy.
+
+23. FCM vs AWS SNS
+| FCM                             | AWS SNS                          |
+| ------------------------------- | -------------------------------- |
+| Firebase/Google service         | AWS service                      |
+| Strong Firebase integration     | Multi-provider messaging         |
+| Android-first ecosystem         | Broader AWS messaging ecosystem  |
+| Can deliver to iOS through APNs | Can integrate with APNs/FCM      |
+| Firebase Console                | AWS Console                      |
+| FCM tokens                      | SNS endpoints/platform endpoints |
+
+Senior answer
+
+“If the application is heavily integrated with Firebase, I would generally use FCM directly. If the organization already has an AWS-centric 
+notification architecture and needs multiple messaging providers or centralized notification management, SNS can provide an abstraction layer.”
+
+24. Real-world notification architecture
+
+For your insurance application, I'd design it like:
+                   ┌─────────────────┐
+                   │ Insurance API   │
+                   └────────┬────────┘
+                            │
+                            ▼
+                 ┌────────────────────┐
+                 │ Notification       │
+                 │ Service            │
+                 └─────────┬──────────┘
+                           │
+                    ┌──────┴──────┐
+                    │             │
+                    ▼             ▼
+                  FCM           Database
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+       Android               iOS
+          │                   │
+         FCM                 APNs
+          │                   │
+          └─────────┬─────────┘
+                    ▼
+                  User
+
+
+Database:
+
+DeviceRegistration
+---------------------------
+UserId
+DeviceId
+Platform
+FcmToken
+AppVersion
+Environment
+IsActive
+LastSeen
+UpdatedAt
+
+The Environment field is particularly useful:
+
+User 1001
+Android
+Token XYZ
+Environment = Staging
+
+versus:
+
+User 1001
+Android
+Token ABC
+Environment = Production
+
+This helps prevent staging/production token mixing.
+
+25. What happens when user logs out?
+
+You should decide whether the device token remains registered for that user.
+Usually:
+
+Logout
+   ↓
+Remove/deactivate user-device association
+   ↓
+No user-specific notifications
+
+Otherwise:
+
+User A logs out
+User B logs in
+      ↓
+old token still mapped to User A
+      ↓
+User A notifications may reach the device
+
+A robust backend maps:
+
+DeviceId ↔ Current authenticated user
+
+and updates/removes the association during login/logout.
+
+26. Common FCM production problems
+Problem 1 — SENDER_ID_MISMATCH
+Check:
+
+Firebase project
+Sender ID
+FCM token
+Service account
+google-services.json
+GoogleService-Info.plist
+Environment
+
+Problem 2 — iOS token unavailable
+
+Check:
+
+APNs registration
+APNs entitlement
+Push Notifications capability
+Firebase configuration
+Apple provisioning profile
+APNs credentials/configuration
+Bundle ID
+
+Problem 3 — Notification works in background but not foreground
+Check your:
+Foreground message callback
+and whether you're creating a local notification yourself.
+
+Problem 4 — Android notification not appearing
+
+Check:
+
+Notification channel
+POST_NOTIFICATIONS permission
+Android version
+FCM token
+Notification payload
+Foreground/background state
+
+Android 13+ requires runtime notification permission.
+
+Problem 5 — Staging notification reaches production
+
+Usually an environment/configuration problem:
+Staging app
+      ↓
+Production Firebase project
+or
+Production backend
+      ↓
+Staging token
+You should make the environment explicit.
+
+27. Notification permission vs FCM token
+These are not the same thing.
+For example:
+
+Notification permission
+        ≠
+FCM registration token
+
+On iOS:
+
+Notification permission
+        ↓
+APNs registration
+        ↓
+APNs token
+        ↓
+FCM token
+
+On Android:
+
+Notification permission
+        +
+Firebase registration
+        ↓
+FCM token
+
+You can potentially have an FCM token while the user has disabled notification permission.
+
+So:
+
+FCM token exists
+
+doesn't necessarily mean:
+
+Notification can be displayed
+
+28. Senior-level end-to-end flow
+
+If interviewer asks:
+
+"Explain how push notification works in your MAUI application."
+
+A strong answer:
+
+“The MAUI application initializes Firebase and obtains an FCM registration token. I send that token to our backend 
+and associate it with the authenticated user's device. The backend stores the device registration and uses FCM to 
+send push messages. On Android, FCM delivers directly through the Firebase messaging infrastructure, while on iOS 
+FCM works with Apple's APNs for delivery. For foreground messages, the application handles the message callback and 
+can generate a local notification or update the UI. For background notification messages, the platform can display 
+the notification according to its rules. I also handle token refresh and update the backend when the registration 
+token changes. For different environments, I maintain separate Firebase configurations to prevent staging and 
+production tokens/projects from being mixed. On Android I configure notification channels and runtime notification 
+permission, while on iOS I ensure APNs registration, capabilities, provisioning, and Firebase configuration are correct.”
+
+ 
+
+Why would you get SENDER_ID_MISMATCH?
+SENDER_ID_MISMATCH means the FCM token belongs to one Firebase project, but you're trying to send the notification 
+using a different Firebase project/sender identity.
+Simple example
+Suppose your staging app is configured with:
+Firebase Project: autoguard-staging
+Sender ID: 111111111
+The app generates:
+FCM Token = ABC123
+That token is associated with the staging Firebase project.
+
+But your backend sends the notification using:
+
+Firebase Project: autoguard-production
+Sender ID: 222222222
+
+Then FCM sees:
+
+Token ABC123
+      ↓
+belongs to Sender ID 111111111
+
+But request comes from
+      ↓
+Sender ID 222222222
+
+❌ SENDER_ID_MISMATCH
+
+Most common causes
+Staging token + production Firebase credentials
+Production token + staging Firebase credentials
+Wrong google-services.json
+Wrong GoogleService-Info.plist
+Wrong Firebase project configured in the backend
+Wrong Firebase service-account credentials
+App was switched between Firebase projects without reinstalling/refreshing its token
+Backend has an old FCM token stored for the device
+
+In your MAUI application
+
+You should verify this chain:
+
+MAUI App
+   ↓
+google-services.json / GoogleService-Info.plist
+   ↓
+Firebase Project
+   ↓
+FCM Registration Token
+   ↓
+Backend database
+   ↓
+Firebase credentials used by backend
+   ↓
+FCM
+
+The Firebase project that generated the token must match the Firebase project authorized to send to that token.
+
+"SENDER_ID_MISMATCH occurs when an FCM registration token is associated with one Firebase project or sender ID, 
+but the send request is authenticated against a different Firebase project. I would first verify the app's Firebase 
+configuration, the token's environment, the backend service-account/project configuration, and whether an old token 
+is stored in the database."
+
+
+Why does OnMessageReceived() execute in one situation but not another?
+The key point is: OnMessageReceived() is not guaranteed to run for every FCM message. Its behavior depends mainly on 
+app state + payload type + platform.
+
+Android
+| App state  | Payload             | `OnMessageReceived()`           |
+| ---------- | ------------------- | ------------------------------- |
+| Foreground | Notification        | ✅ Usually yes                   |
+| Foreground | Data                | ✅ Yes                           |
+| Background | Notification        | ❌ Usually no                    |
+| Background | Data                | ✅ Generally yes                 |
+| Background | Notification + Data | ❌ Usually no; tap delivers data |
+
+Why?
+
+A notification payload tells Android:
+
+"This is a user-visible notification. If my app is in the background, Android/FCM can display it for me."
+
+So:
+
+Backend
+   ↓
+FCM
+   ↓
+Notification payload
+   ↓
+App in BACKGROUND
+   ↓
+Android System displays notification
+   ↓
+OnMessageReceived() ❌
+
+But when the app is foreground:
+
+Backend
+   ↓
+FCM
+   ↓
+App is FOREGROUND
+   ↓
+OnMessageReceived() ✅
+   ↓
+You decide what to do
+
+That's why developers often see:
+
+"It works when the app is open, but OnMessageReceived() doesn't execute when the app is in background."
+
+That's expected behavior for notification messages.
+Data-only message
+
+If you send:
+
+{
+  "data": {
+    "type": "claim_updated",
+    "claimId": "12345"
+  }
+}
+
+Android gives your application the data through the messaging callback, including when the app is backgrounded, 
+subject to Android/FCM delivery restrictions.
+FCM
+ ↓
+Data message
+ ↓
+OnMessageReceived()
+ ↓
+Your code
+
+Then you can create your own notification:
+
+public override void OnMessageReceived(RemoteMessage message)
+{
+    var title = message.GetNotification()?.Title ?? "Notification";
+
+    var claimId = message.Data.TryGetValue("claimId", out var id)
+        ? id
+        : null;
+
+    ShowLocalNotification(title, claimId);
+}
+
+Notification + Data payload
+
+For example:
+
+{
+  "notification": {
+    "title": "Claim Updated",
+    "body": "Your claim has been approved."
+  },
+  "data": {
+    "claimId": "12345",
+    "type": "claim_updated"
+  }
+}
+
+When the app is backgrounded, Android can display the notification itself:
+FCM
+ ↓
+Android
+ ↓
+Notification shown
+Your OnMessageReceived() isn't normally where you handle that background notification.
+
+When the user taps it, the data can be available through the launch/intent flow.
+The important distinction
+
+Don't memorize only:
+
+Foreground = callback, Background = no callback.
+
+That's too simplistic.
+
+Instead remember:
+                 FCM MESSAGE
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+    Notification              Data
+       payload               payload
+          │                     │
+          ▼                     ▼
+   Platform may handle    App handles data
+   notification           through callback
+          │
+    ┌─────┴─────┐
+    │           │
+Foreground   Background
+    │           │
+    ▼           ▼
+Callback      System may
+              display it
+
+One more important issue: "background" ≠ "force-killed"
+
+There is another common interview trap.
+
+These are different:
+
+Foreground
+Background
+Terminated / force-stopped
+If the user force-stops an Android app, Android can prevent background delivery until the app is launched again.
+So don't say:
+
+"OnMessageReceived() always executes for data messages."
+
+A better Senior-level statement is:
+
+"OnMessageReceived() behavior depends on the message payload and application state. Notification messages can be handled 
+by the OS when the Android app is backgrounded, whereas data messages are intended for application handling. I also 
+consider Android background restrictions, Doze, force-stop behavior, notification permission, and message priority 
+when troubleshooting delivery."
+For your MAUI/FCM debugging
+
+If you see:
+
+App OPEN       → OnMessageReceived() ✅
+App BACKGROUND → OnMessageReceived() ❌
+
+
+
+Why can a notification arrive when the app is backgrounded but not trigger your foreground callback?
+Because Android/FCM can handle a notification message at the OS level when your app is in the background, 
+instead of delivering it to your OnMessageReceived() callback.
+Example
+
+If your backend sends:
+
+{
+  "notification": {
+    "title": "Claim Updated",
+    "body": "Your claim has been approved."
+  }
+}
+
+When the app is foregrounded:
+FCM
+ ↓
+Your FirebaseMessagingService
+ ↓
+OnMessageReceived()
+ ↓
+Your code
+
+So you can handle it yourself.
+
+But when the app is backgrounded:
+
+FCM
+ ↓
+Android / FCM system
+ ↓
+Notification shown in system tray
+
+OnMessageReceived() is not normally called for the notification portion.
+
+Why does Android do this?
+
+Because a notification payload is explicitly a user-visible notification. When your app isn't active, 
+FCM can let the operating system display it without waking your application code.
+
+This is why you can see:
+
+🔔 Claim Updated
+
+in the notification tray even though:
+public override void OnMessageReceived(RemoteMessage message)
+{
+    // breakpoint doesn't hit
+}
+
+What if you want your callback to handle it?
+
+Use a data message when appropriate:
+
+{
+  "data": {
+    "title": "Claim Updated",
+    "body": "Your claim has been approved.",
+    "claimId": "12345"
+  }
+}
+
+Then your application can process the data through the messaging callback, subject to Android's background-delivery 
+restrictions.
+“When the app is backgrounded, FCM can delegate notification messages to the Android system. The OS displays the 
+notification directly, so the application's OnMessageReceived() callback doesn't necessarily execute. In the foreground, 
+the app is active, so the message is delivered to the callback and the application decides how to handle it. If I need 
+application-controlled processing, I generally use a data payload, while also accounting for Android background restrictions.”
+
+ 
+Android
+
+Know:
+Activity
+1. Activity
+An Activity represents a UI entry point/screen in Android.
+In native Android:
+Activity
+   ↓
+UI / Views
+In .NET MAUI, you normally work with:
+
+ContentPage
+Shell
+Navigation
+instead of directly managing Activities.
+But MAUI Android still has an Activity underneath.
+Typical MAUI Android project:
+Platforms/
+   Android/
+      MainActivity.cs
+      MainApplication.cs
+      AndroidManifest.xml
+
+Example:
+[Activity(
+    Theme = "@style/Maui.SplashTheme",
+    MainLauncher = true,
+    ConfigurationChanges =
+        ConfigChanges.ScreenSize |
+        ConfigChanges.Orientation |
+        ConfigChanges.UiMode |
+        ConfigChanges.ScreenLayout |
+        ConfigChanges.SmallestScreenSize |
+        ConfigChanges.Density)]
+public class MainActivity : MauiAppCompatActivity
+{
+}
+An Android Activity represents a UI entry point and participates in the Android lifecycle. In MAUI, I usually work 
+with Pages and Shell, but MAUI creates and manages the underlying Android Activity.
+
+Android Application lifecycle
+Conceptually:
+
+Application starts
+      ↓
+MainApplication
+      ↓
+Activity created
+      ↓
+Activity resumed
+      ↓
+User interacts
+      ↓
+Activity paused/stopped
+      ↓
+Activity destroyed
+
+Activity lifecycle
+
+Important callbacks:
+
+onCreate()
+   ↓
+onStart()
+   ↓
+onResume()
+   ↓
+Running
+   ↓
+onPause()
+   ↓
+onStop()
+   ↓
+onDestroy()
+
+You don't normally override these directly in MAUI unless you have platform-specific requirements.
+
+MAUI provides lifecycle hooks:
+builder.ConfigureLifecycleEvents(events =>
+{
+#if ANDROID
+    events.AddAndroid(android =>
+    {
+        android.OnResume(activity =>
+        {
+            // App resumed
+        });
+
+        android.OnPause(activity =>
+        {
+            // App paused
+        });
+    });
+#endif
+});
+
+Important distinction
+
+OnPause() doesn't necessarily mean:
+
+"Application has been terminated."
+
+Android can pause/stop an Activity while the process remains alive.
+
+Manifest
+The manifest describes important Android application metadata.
+Platforms/Android/AndroidManifest.xml
+It can contain:
+
+permissions
+application metadata
+activities
+services
+receivers
+providers
+intent filters
+
+<uses-permission android:name="android.permission.INTERNET" />
+
+<uses-permission
+    android:name="android.permission.POST_NOTIFICATIONS" />
+
+AndroidManifest.xml defines application-level metadata and components such as permissions, activities, services, receivers 
+and intent filters. In MAUI, the final manifest can be composed from the Android project configuration and manifest 
+attributes.
+
+Permissions
+Permissions control access to protected Android resources.
+Camera
+Location
+Bluetooth
+Notifications
+Storage
+Microphone
+There are two important categories:
+Normal permissions
+
+Granted automatically when applicable.
+Example:
+<uses-permission android:name="android.permission.INTERNET" />
+
+Runtime/dangerous permissions
+The user must grant them at runtime.
+For example:
+
+Camera
+Location
+Microphone
+Notifications
+
+In MAUI, you can use:
+
+var status = await Permissions.RequestAsync<Permissions.Camera>();
+
+For notifications, Android 13+ introduced runtime notification permission:
+
+POST_NOTIFICATIONS
+Having this in the manifest:
+<uses-permission android:name="android.permission.CAMERA" />
+does not necessarily mean the user has granted the permission.
+Manifest declaration and runtime authorization are different concepts.
+
+
+Intent
+An Intent is a messaging mechanism used by Android to request an action or communicate with another Android component.
+For example:
+
+Activity A
+   ↓
+Intent
+   ↓
+Activity B
+Explicit Intent
+
+You specify the exact component.
+
+var intent = new Intent(this, typeof(MainActivity));
+StartActivity(intent);
+
+Implicit Intent
+
+You specify the desired action rather than the exact component.
+
+For example:
+
+Open URL
+Open camera
+Share content
+Open map
+
+Conceptually:
+
+Intent
+Action = VIEW
+Data = https://example.com
+
+Android finds an application capable of handling it.
+In MAUI
+
+You often use higher-level APIs such as:
+
+await Launcher.Default.OpenAsync("https://example.com");
+instead of manually creating Android intents.
+
+Notification channels
+Android 8.0+ requires notifications to be associated with a Notification Channel.
+Example:
+var channel = new NotificationChannel(
+    "claims",
+    "Claim Notifications",
+    NotificationImportance.High);
+var manager =
+    GetSystemService(NotificationService)
+    as NotificationManager;
+
+manager?.CreateNotificationChannel(channel);
+Then:
+var notification = new NotificationCompat.Builder(
+    this,
+    "claims")
+    .SetContentTitle("Claim Updated")
+    .SetContentText("Your claim has been approved.")
+    .SetSmallIcon(Resource.Drawable.notification_icon)
+    .SetAutoCancel(true)
+    .Build();
+
+Why channels?
+Users can configure notification behavior per channel.
+For example:
+
+Claim Notifications
+   ├── Sound
+   ├── Vibration
+   └── Importance
+
+Marketing Notifications
+   ├── Sound
+   ├── Vibration
+   └── Importance
+
+Important interview point
+
+Channels are created by the application, but the user controls many channel settings afterward.
+
+Firebase messaging service
+For Firebase Cloud Messaging on Android, a Firebase messaging service receives messages 
+that are delivered to your application.
+Typically:
+[Service(Exported = false)]
+[IntentFilter(new[]
+{
+    "com.google.firebase.MESSAGING_EVENT"
+})]
+public class MyFirebaseMessagingService
+    : FirebaseMessagingService
+{
+    public override void OnMessageReceived(RemoteMessage message)
+    {
+        // Handle message
+    }
+
+    public override void OnNewToken(string token)
+    {
+        // Send updated token to backend
+    }
+}
+
+Two particularly important callbacks:
+OnMessageReceived()
+OnNewToken()
+
+OnMessageReceived()
+
+Handles messages delivered to the application.
+
+But remember the FCM distinction from your previous question:
+
+Notification payload + background
+       ↓
+OS may display notification
+       ↓
+OnMessageReceived() may NOT execute
+OnNewToken()
+
+Called when Firebase generates/refreshes the registration token.
+
+You should send the new token to your backend.
+
+Android SDK
+The Android SDK provides the APIs, build tools and platform definitions needed to build Android applications.
+It contains things such as:
+Android platform APIs
+Build Tools
+Platform Tools
+ADB
+SDK Platform
+
+In .NET MAUI, your project targets Android through .NET for Android and the installed Android SDK.
+
+For example:
+
+.NET MAUI
+   ↓
+.NET for Android
+   ↓
+Android SDK
+   ↓
+Android APK/AAB
+
+Min SDK
+Min SDK / minSdkVersion defines the oldest Android API level your application supports.
+
+For example:
+
+<uses-sdk android:minSdkVersion="26" />
+
+means:
+
+Android API 25 ❌
+Android API 26 ✅
+Android API 27 ✅
+...
+Why is it important?
+
+If a user's Android version is below your minimum SDK:
+
+App cannot be installed/supported
+Interview answer
+
+“Min SDK defines the minimum Android API level on which the application can run.”
+
+Target SDK
+Target SDK tells Android and Google Play which Android API behavior your application is targeting.
+For example:
+Target SDK = 36
+does not mean:
+
+"The app only runs on Android 36."
+That's a common interview mistake.
+Instead:
+Min SDK
+    ↓
+Oldest supported Android version
+
+Target SDK
+    ↓
+Android behavior/API level the app targets
+
+Compile SDK
+    ↓
+SDK used to compile the application
+
+These are different.
+
+Min SDK vs Target SDK vs Compile SDK
+Very important:
+| Setting     | Meaning                                |
+| ----------- | -------------------------------------- |
+| Min SDK     | Oldest Android version supported       |
+| Target SDK  | Android behavior/API level app targets |
+| Compile SDK | SDK used to compile the app            |
+
+Example:
+
+Min SDK     = 23
+Target SDK  = 36
+Compile SDK = 36
+
+means:
+
+Can run from API 23+
+Built against API 36
+Targets Android 16/API 36 behavior
+
+
+ABI
+ABI = Application Binary Interface.
+
+It determines which CPU architecture the native binaries are compiled for.
+
+Common Android ABIs:
+
+arm64-v8a
+armeabi-v7a
+x86
+x86_64
+
+Modern phones are predominantly:
+arm64-v8a
+Why does ABI matter?
+If your application contains native libraries:
+
+libSomething.so
+
+the correct architecture must be available.
+
+For example:
+
+arm64-v8a
+    ↓
+64-bit ARM phones
+Common MAUI configuration
+
+You may see:
+
+<RuntimeIdentifiers>
+    android-arm64;android-x64
+</RuntimeIdentifiers>
+
+or equivalent project configuration.
+
+Interview answer
+“ABI defines the CPU architecture that native binaries target. In Android builds, I pay attention to ABI when using native libraries, 
+because an incompatible or missing architecture can cause installation or runtime issues.”
+
+AAB vs APK
+Android Package Kit
+.apk
+An APK is an installable Android package.
+You can directly install it on a device:
+adb install app.apk
+
+AAB
+
+Android App Bundle
+
+.aab
+
+An AAB is a publishing format intended primarily for Google Play.
+
+Instead of giving every device all resources and native binaries:
+
+AAB
+ ↓
+Google Play
+ ↓
+Generates optimized APKs
+ ↓
+Specific device
+
+For example:
+
+Device A → arm64 + English
+Device B → arm64 + Hindi
+Device C → x86_64 + English
+
+Google Play can deliver the appropriate split APKs.
+
+Senior answer
+
+“APK is an installable package, while AAB is a publishing format that allows Google Play to generate optimized APKs for different device 
+configurations. For Play Store distribution, I generally publish an AAB.”
+
+Signing
+Android applications must be digitally signed.
+Signing provides:
+application identity
+update continuity
+integrity/authenticity
+
+The signing process uses a key.
+The signing process uses a key.
+
+Application
+     ↓
+Build
+     ↓
+Sign with private key
+     ↓
+Signed APK/AAB
+     ↓
+Distribution
+
+Keystore
+A keystore stores cryptographic keys used for signing Android applications.
+
+Conceptually:
+
+my-release.keystore
+       │
+       └── signing key
+
+You should protect the keystore/private key carefully.
+
+Play Store requirements
+
+Why?
+
+Suppose version 1 is signed with:
+
+Key A
+
+and version 2 is signed with an unrelated:
+
+Key B
+
+Android/Play may treat them as different signing identities, and update continuity can break.
+
+Important
+
+Never commit production signing secrets casually into Git.
+
+For CI/CD, use:
+
+GitHub Actions Secrets
+Azure DevOps Secure Files
+Secret Manager
+CI/CD secure variables
+
+Upload Key vs App Signing Key
+
+This is particularly important for Google Play.
+
+With Google Play App Signing, Google can manage the app-signing key, while you typically use an upload key to 
+authenticate uploads.
+
+Conceptually:
+ 
+
+Know:
+
+AppDelegate
+Scene lifecycle
+Entitlements
+Provisioning profiles
+Certificates
+Code signing
+APNs
+Development vs Distribution provisioning
+.plist
+TestFlight
+App Store signing
+
+A very good senior-level question:
+
+"It works on Android but push notifications don't work on iOS. How would you troubleshoot it?"
+
+8. Dependency Injection
+
+Understand this deeply.
+
+builder.Services.AddSingleton<IAuthService, AuthService>();
+builder.Services.AddTransient<LoginViewModel>();
+builder.Services.AddTransient<LoginPage>();
+
+Know why you would choose each lifetime.
+
+Also understand:
+
+MauiProgram
+     ↓
+Service Container
+     ↓
+ViewModel
+     ↓
+Service
+     ↓
+Repository
+     ↓
+HttpClient
+     ↓
+API
+9. Clean Architecture
+
+For a senior interview, prepare this structure:
+
+Presentation
+    ↓
+Application
+    ↓
+Domain
+    ↓
+Infrastructure
+
+Understand:
+
+SOLID
+Repository pattern
+Service layer
+Dependency inversion
+Interfaces
+DTOs
+Domain models
+Dependency injection
+Separation of concerns
+
+Be ready to answer:
+
+"How would you structure a large MAUI application with 30+ screens?"
+
+10. Real production scenarios
+
+This is probably the most valuable preparation for you.
+
+I would practice questions such as:
+
+Scenario 1
+
+API takes 8–10 seconds to respond. How do you improve the user experience?
+
+Scenario 2
+
+CollectionView with 100+ records freezes the UI.
+
+Scenario 3
+
+Firebase token is null on iOS.
+
+Scenario 4
+
+Android receives notification but iOS doesn't.
+
+Scenario 5
+
+App crashes only in Release mode.
+
+Scenario 6
+
+App works locally but crashes on TestFlight.
+
+Scenario 7
+
+User loses internet while submitting a claim.
+
+Scenario 8
+
+JWT expires while API request is running.
+
+Scenario 9
+
+Memory usage continuously increases after navigating between pages.
+
+Scenario 10
+
+Production API returns 401 but development works.
+
+These are much more useful than memorizing 100 definitions.
+
+Recommended interview roadmap
+
+I'd prepare in this order:
+
+                    MAUI Interview
+                         │
+        ┌────────────────┼────────────────┐
+        ↓                ↓                ↓
+       MAUI             C#             Architecture
+        │                │                │
+        ↓                ↓                ↓
+      XAML          Async/Await        MVVM
+      MVVM          LINQ              DI
+      Shell         Collections       SOLID
+      Handlers      Memory             Clean Arch
+        │                │                │
+        └────────────────┼────────────────┘
+                         ↓
+                       APIs
+                         │
+             ┌───────────┼───────────┐
+             ↓           ↓           ↓
+            JWT        REST       Security
+             │
+             ↓
+          Firebase
+             │
+             ↓
+       Android / iOS
+             │
+             ↓
+        Performance
+             │
+             ↓
+       Production Issues
+
+
+
+29. Very important interview questions
+
+You should be ready for these follow-ups:
+
+Basic
+What is FCM?
+What is an FCM registration token?
+Is the FCM token permanent?
+What happens when the token changes?
+What is google-services.json?
+What is GoogleService-Info.plist?
+What is Sender ID?
+What is APNs?
+Android
+What is a notification channel?
+Why are notification channels required?
+What changed with Android 13 notification permission?
+Foreground vs background FCM behavior?
+What is OnMessageReceived()?
+iOS
+How does FCM work with APNs?
+Difference between APNs token and FCM token?
+Why might FCM say "no APNS Token specified"?
+What configuration is required for iOS push?
+Development vs production APNs?
+Architecture
+How do you store device tokens?
+How do you support multiple devices per user?
+What happens when a user logs out?
+How do you handle token refresh?
+How do you prevent staging/production token mixing?
+How would you design push notifications for 1 million users?
+FCM vs AWS SNS?
+How would you troubleshoot SENDER_ID_MISMATCH?
+🔥 One diagram to memorize for the interview
+                       YOUR BACKEND
+                            │
+                            │
+                     Notification API
+                            │
+                            ▼
+                    ┌──────────────┐
+                    │     FCM      │
+                    └──────┬───────┘
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+          Android                       iOS
+             │                           │
+            FCM                         APNs
+             │                           │
+             ▼                           ▼
+       Android Device              iPhone Device
+             │                           │
+             └─────────────┬─────────────┘
+                           │
+                     MAUI Application
+                           │
+                    FCM Registration
+                         Token
+
+And remember this distinction:
+
+FCM Token
+   ↓
+Identifies Firebase app installation
+
+APNs Token
+   ↓
+Identifies iOS push destination with Apple
+
+Sender ID
+   ↓
+Identifies the Firebase/Google project context
+
+ 
+ ----------------------------------------------------------------------------------------------------------------------------------------------------
+ ----------------------------------------------------------------------------------------------------------------------------------------------------
+ .NET Multi-platform App UI (.NET MAUI) is Microsoft's cross-platform framework that evolves Xamarin.Forms to let you build native desktop and mobile 
+ applications for Android, iOS, macOS, and Windows from a single C# and XAML codebase.
+
+ Key Components
+ 1: Unified Single Project Structure
+ Unlike Xamarin.Forms (which required separate platform head projects) but .NET MAUI uses sinle .csproj file targeting multiple platforms via 
+ SDK-style targeting (TargetFrameworks).
+    => Platforms Folder: Houses platform-specific code (Andoid, iOS, MacCatalyst, Windows) when direct platform API or custom handleres are needed
+    => Shared Assets:Fonts, images, splash screens, app icons, and raw assets are stored in one place and automatically converted into platform-native 
+       formats during build.
+
+ 2: Handler Architecture
+ .NET MAUI replaces Xamarin's heavy Renderers with lightweight Handlers.
+    =>Decoupled Mapping: Uses interface-based mapping (e.g., IButton to Android.Widget.Button or UIKit.UIButton).
+    =>Performance Gain: Removes the tight coupling of the old VisualElementRenderer, reducing object creation, layout passes, and assembly sizes.
+    =>Easy Customization: Platform mappings can be modified globally or locally via PropertyMapper without needing to write custom subclassed 
+    renderers.
+
+ 3: Application Lifecycle & Entry Point
+    =>Apps start via MauiProgram.cs, which uses the standard .NET Generic Host pattern (MauiAppBuilder):
+    public static class MauiProgram
+    {
+        public static MauiApp CreateMauiApp()
+        {
+            var builder = MauiApp.CreateBuilder();
+            builder
+                .UseMauiApp<App>()
+                .ConfigureFonts(fonts => {
+                    fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                });
+
+            // Dependency Injection registration
+            builder.Services.AddSingleton<IConnectivity>(Connectivity.Current);
+            builder.Services.AddTransient<MainViewModel>();
+
+            return builder.Build();
+        }
+    }
+
+ 4: Compilation & Execution Runtimes
+    =>Android: C# compiles to IL, which executes alongside Java/Kotlin code via Mono VM (using Ahead-Of-Time/AOT or Just-In-Time/JIT compilation 
+    depending on release settings).
+    =>iOS / macOS (Mac Catalyst): C# is fully compiled via Ahead-Of-Time (AOT) compilation into native ARM binary code for direct execution on 
+    iOS hardware.
+    =>Windows (WinUI 3): Executes on top of .NET Core / CoreCLR runtime targeting Windows App SDK.
+
+
+| Feature                           | Xamarin.Forms                                                                         | .NET MAUI                                                                 |
+ 
+| **Project Structure**             | Multi-project head architecture (separate iOS, Android, and Core projects)            | **Single Project** (`.csproj` targeting multiple OSs)                     |
+| **Control Mapping**               | **Renderers** (heavy, coupled to `VisualElement`, slow creation)                      | **Handlers** (lightweight, decoupled, faster rendering)                   |
+| **Asset Management**              | Platform-specific folders (separate resolutions for each OS)                          | **Unified Resources** (images, fonts, splash screens auto-scaled at build)|
+| **Framework Base**                | .NET Framework / Mono                                                                 | **Modern .NET** (.NET 6/7/8/9+)                                           |
+| **Desktop Support**               | Basic UWP & experimental macOS                                                        | **First-class WinUI 3 & Mac Catalyst**                                    |
+| **Web Integration**               | Limited web views                                                                     | **Blazor Hybrid** (`BlazorWebView` for Razor components)                  |
+| **Configuration**                 | Scattered initialization (`AppDelegate`, `MainActivity`, `App.xaml.cs`)               | Centralized **`MauiProgram.cs`** via `.NET Generic Host`                  |
+| **Dependency Injection**          | `DependencyService` (basic service locator)                                           | Built-in **Microsoft.Extensions.DependencyInjection**                     |
+
+1. Single Project Architecture
+In Xamarin.Forms, adding a custom font or image meant adding and configuring files across multiple project platforms. 
+In .NET MAUI, resources are placed once in the Resources/ folder, and the compiler handles multi-resolution asset generation automatically.
+MyMauiApp/
+├── Platforms/
+│   ├── Android/
+│   ├── iOS/
+│   ├── MacCatalyst/
+│   └── Windows/
+├── Resources/
+│   ├── Fonts/
+│   ├── Images/
+│   └── Raw/
+├── MauiProgram.cs
+└── App.xaml
+
+2. Handlers vs. Renderers
+Xamarin Renderers: Tight coupling to VisualElementRenderer caused bloated view hierarchies, slow UI rendering times, and required 
+writing custom renderers for simple modifications.
+
+MAUI Handlers: Decoupled through interfaces (IButton, IEntry), improving performance up to 5x on startup and layout rendering. 
+Controls can be customized globally or locally using lightweight property mappers:
+
+// Customize all Entry controls across the app without custom renderers
+Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("MyCustomEntry", (handler, view) =>
+{
+#if ANDROID
+    handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
+#elif IOS
+    handler.PlatformView.BorderStyle = UIKit.UITextBorderStyle.None;
+#endif
+});
+
+In .NET MAUI, MauiProgram.cs is the central entry point for configuring and bootstrapping your application across all platforms. 
+It utilizes the .NET Generic Host pattern (MauiAppBuilder), bringing standard .NET web and cloud architectural patterns into cross-platform 
+desktop and mobile development.
+
+Key Functions of MauiProgram.cs
+
+App Initialization: Registers the root app class (App) and defines fonts, maps, or third-party SDK extensions.
+
+Dependency Injection (DI): Registers services, ViewModels, and Views with built-in lifetime management (AddSingleton, AddTransient, AddScoped).
+
+Control Customization: Configures cross-platform Control Handlers and property mappers globally.
+
+Lifecycle & Logging: Sets up logging providers, debugging output, and platform-specific lifecycle events.
+
+Code Example
+using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Controls.Hosting;
+using Microsoft.Maui.Hosting;
+using MyMauiApp.Services;
+using MyMauiApp.ViewModels;
+using MyMauiApp.Views;
+
+namespace MyMauiApp;
+
+public static class MauiProgram
+{
+    public static MauiApp CreateMauiApp()
+    {
+        var builder = MauiApp.CreateBuilder();
+
+        builder
+            .UseMauiApp<App>()
+            .ConfigureFonts(fonts =>
+            {
+                fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+            });
+
+        // 1. Register Native & Business Services
+        builder.Services.AddSingleton<IConnectivity>(Connectivity.Current);
+        builder.Services.AddSingleton<IApiService, ApiService>();
+
+        // 2. Register ViewModels
+        builder.Services.AddSingleton<MainViewModel>();
+        builder.Services.AddTransient<DetailViewModel>();
+
+        // 3. Register Views / Pages
+        builder.Services.AddSingleton<MainPage>();
+        builder.Services.AddTransient<DetailPage>();
+
+        // 4. Configure Handlers (Optional Customization)
+        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("NoUnderline", (handler, view) =>
+        {
+#if ANDROID
+            handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
+#elif IOS || MACCATALYST
+            handler.PlatformView.BorderStyle = UIKit.UITextBorderStyle.None;
+#endif
+        });
+
+#if DEBUG
+        builder.Logging.AddDebug();
+#endif
+
+        return builder.Build();
+    }
+}
+
+Dependency Injection (DI) in .NET MAUI is powered by the built-in Microsoft.Extensions.DependencyInjection container. 
+It allows you to register services, ViewModels, and Pages in MauiProgram.cs so that dependencies are automatically instantiated 
+and injected where needed—promoting loose coupling, testability, and clean separation of concerns.
+
+1. Service Lifetimes
+When registering dependencies in MauiProgram.cs, choose from three primary lifetimes:
+Lifetime        Method                                      Behavior in MAUI            
+Transient       AddTransient<TService, TImplementation>()   A new instance is created every time it is requested. Best for detail pages, 
+                                                            temporary ViewModels, or short-lived operations.
+Singleton       AddSingleton<TService, TImplementation>()   A single shared instance is created the first time it is requested and persists for the 
+                                                            lifetime of the application. Best for stateless services, caching, API clients, 
+                                                            or main app pages/tabs.
+Scoped          AddScoped<TService, TImplementation>()      In MAUI desktop/mobile apps (unlike ASP.NET Core web requests), Scoped behaves 
+                                                            effectively like Singleton unless custom DI scopes are manually created.
+
+.NET MAUI Shell is the foundation for application structure and navigation. It provides a single, unified system for managing 
+container layouts (Flyout menus, Bottom Tabs, Top Tabs) and URI-based navigation across iOS, Android, macOS, and Windows.
+Key Capabilities of Shell
+Unified App Visual Hierarchy: Easily build flyout menus, bottom tab bars, and top tab bars using simple XAML declarations.
+
+URI-Based Navigation: Navigate between pages using routes (e.g., //home/details?id=123) with full support for forward, backward, and absolute pathing.
+
+Built-in Search & Customization: Direct support for integrated search bars (SearchHandler) and custom navigation bar components.
+
+Optimized Performance: Pages are instantiated lazily on demand rather than all at launch, reducing app startup time and memory footprint.
+
+4. Passing Data Between Pages
+Passing Parameters
+Data can be passed using query strings or dictionary objects:
+
+// Passing via Dictionary (supports complex objects)
+var parameters = new Dictionary<string, object>
+{
+    { "SelectedProduct", item },
+    { "IsNewItem", false }
+};
+
+await Shell.Current.GoToAsync(nameof(ItemDetailPage), parameters);
+
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace MyMauiApp.ViewModels;
+[QueryProperty(nameof(Product), "SelectedProduct")]
+[QueryParameter(nameof(IsNew), "IsNewItem")]
+
+[QueryProperty(nameof(Product), "SelectedProduct")]
+[QueryProperty(nameof(IsNew), "IsNewItem")]
+public partial class ItemDetailViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private Product _product;
+
+    [ObservableProperty]
+    private bool _isNew;
+}

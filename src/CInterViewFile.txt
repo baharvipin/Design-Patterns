@@ -1,0 +1,257 @@
+﻿1: Async Vs Await
+async is a modifier that is used to declare a method as asynchronous. 
+It allows the method to run asynchronously, meaning it can perform tasks without blocking the main thread.
+await is an operator that is used to suspend the execution of an asynchronous method until the awaited task 
+completes.
+It allows to wait the completion of an asynchronous operation without blocking the main thread. 
+When the awaited task completes, the execution of the asynchronous method resumes from the point where it was suspended.
+public async Task<string> GetDatabaseAsync(){
+	// Simulating an asynchronous operation
+	await Task.Delay(2000); // Simulating a delay of 2 seconds
+	return "Data retrieved from the database.";
+}
+
+public async Task ProcessOrderAsync(int orderId)
+{
+    // Sync
+    ValidateOrder(orderId);
+
+    // Async
+    var order = await GetOrderFromDatabaseAsync(orderId);
+
+    // Sync
+    CalculateDiscount(order);
+
+    // Async
+    var paymentResult = await ProcessPaymentAsync(order);
+
+    // Async
+    await SaveOrderAsync(order, paymentResult);
+
+    // Sync
+    LogSuccess(orderId);
+}
+
+Middleware Pipeline in ASP.NET Core:
+In ASP.NET Core, the middleware pipeline is a sequence of components that are executed in order for each 
+incoming HTTP request.
+Each middleware component can perform operations on the request and response, and it can also decide 
+whether to pass the request to the next middleware in the pipeline or to short-circuit the pipeline.
+1: Process incoming request
+2: Execute logic before and after the next middleware
+3: Short-circuit the request
+4: Modify requests/responses
+5: Handle exceptions
+6: Aunthenticate users 
+7: Log requests and responses
+
+Think of it as chain of responsibility pattern where each middleware component has the 
+opportunity to handle the request and
+
+    Browser
+    |
+    v
+    Middleware 1 (e.g., Authentication)
+    |
+    v
+    Middleware 2 (e.g., Logging)
+    |
+    v
+    Middleware 3 (e.g., Routing)
+    |
+    v
+    Middleware 4 (e.g., Exception Handling)
+    |
+    v
+    Middleware 5 (e.g., Response Compression)
+    |
+    v
+    Application Logic (e.g., MVC Controller)
+    |
+    v
+    Response sent back to the browser
+    |
+    v
+    Browser receives the response
+    |
+    v
+    End of request processing
+
+    In ASP.NET Core Dependency Injection (DI), the service lifetime determines 
+    how long an object instance lives and how many times it gets created.
+    1. Transient Lifetime
+    services.AddTransient<IEmailService, EmailService>();
+    A new instance is created every time it is requested.
+    Even within the same HTTP request, multiple resolutions create multiple objects.
+
+    2. Scoped Lifetime
+    services.AddScoped<IEmailService, EmailService>();
+
+    3. Singleton Lifetime
+    services.AddSingleton<IEmailService, EmailService>();
+
+    Which lifetime should be used for DbContext?
+    ✅ Scoped
+    builder.Services.AddDbContext<ApplicationDbContext>();
+
+    Why?
+    One DbContext per request
+    Maintains transaction consistency
+    Avoids concurrency issues
+    Supports EF Core Change Tracking
+
+    Can a Singleton depend on a Scoped service?
+    ❌ No
+    Reason:
+    Singleton lives forever.
+    Scoped service lives per request.
+    DI container cannot inject a shorter-lived service into a longer-lived service.
+
+    Transient: A new instance is created every time the service is requested. Best for lightweight, 
+    stateless services like email senders.
+
+    Scoped: One instance is created per HTTP request and shared within that request. Best for DbContext, 
+    repositories, and business services.
+
+    Singleton: A single instance is created for the application's lifetime and shared across all requests. 
+    Best for caching, configuration, and application-wide services. Singleton services must be thread-safe, 
+    and they should not depend on scoped services.
+
+    1. Stateless Service
+
+    A stateless service does not store data between method calls.
+    public class EmailSender : IEmailSender
+    {
+        public Task SendAsync(string email, string subject)
+        {
+            // Send email
+            return Task.CompletedTask;
+        }
+    }
+    The service doesn't keep any information about previous emails.
+    Every call is independent:
+
+await emailSender.SendAsync("a@test.com", "Welcome");
+await emailSender.SendAsync("b@test.com", "Reset Password");
+
+The second call doesn't depend on the first call.
+
+
+2. No Shared State
+
+Shared state means multiple users or requests can access the same data stored inside the service instance.
+
+Example of shared state:
+
+public class CounterService
+{
+    public int Count { get; set; }
+
+    public void Increment()
+    {
+        Count++;
+    }
+}
+
+If this is registered as Singleton:
+builder.Services.AddSingleton<CounterService>();
+
+Request 1:
+
+counter.Increment(); // Count = 1
+
+Request 2:
+
+counter.Increment(); // Count = 2
+
+Both requests are modifying the same object.
+
+This is shared state.
+
+For an email service:
+public class EmailSender
+{
+    public Task SendAsync(string email)
+    {
+        return Task.CompletedTask;
+    }
+}
+
+There are no fields or properties storing data.
+
+Nothing is shared between requests.
+
+3. Lightweight
+
+A lightweight service is inexpensive to create.
+
+Example:
+
+public class DateTimeService
+{
+    public DateTime GetCurrentTime()
+    {
+        return DateTime.UtcNow;
+    }
+}
+
+Creating this object:
+
+var service = new DateTimeService();
+
+Consumes almost no resources.
+
+Therefore Transient is perfectly fine.
+
+
+public void ClickButton() 
+{
+ Console.WriteLine("Button Clicked");
+}
+
+Some other parts of the application needs to execute ButtonClicked() when the button is clicked 
+How do we tell the button : when you are clicked, execute this method. thats where delegates comes into picture 
+
+what is a delegate?
+a delegate is a type-safe reference to a method.
+
+public  delegate void MyDelegate();
+
+public class Program
+{
+ public static void Sayhello()
+ {
+ // hello function is executed
+ 
+ }
+  public static main() {
+  MyDelegate d = SayHello
+  d();
+  }
+
+}
+
+whta's happening?
+
+public  delegate void MyDelegate(); => this degines a delegate type
+it says => mydelegate can point to a any method that returns void and accepts no parameters
+
+
+why is it called type-safe ?
+
+suppose public delegate void mydelegate();
+this delegates expects: 1: return type void 
+and parameters none
+
+delegate withs parameters
+
+publid delegate funcwithparameter(int a, int b);
+
+delegate is like a variable which store the methods 
+
+multicast delegates
+
+a delegate can reference multiple methods
+
+public delegate void notification();
+

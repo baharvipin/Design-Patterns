@@ -1,0 +1,209 @@
+name: Android build and Google Play upload
+description: >
+  Builds the AAMMaui Android app for one backend environment (qa or prod), signs the
+  App Bundle and uploads it to Google Play internal testing. With mode=check it only
+  compiles an unsigned build (PRs).
+
+inputs:
+  mode:
+    description: "deploy (signed .aab + Google Play) or check (unsigned build)"
+    default: deploy
+  environment:
+    description: "Backend environment baked into the app: qa or prod"
+    required: true
+  bump:
+    description: "Version part to increase: patch, minor or major"
+    default: patch
+  keystore-base64:
+    description: Upload keystore, base64
+  keystore-password:
+    description: Keystore password
+  key-alias:
+    description: Key alias inside the keystore
+  key-password:
+    description: Key password
+  play-service-account-json:
+    description: Google Play service account JSON (optional; without it the bundle is only built)
+
+runs:
+  using: composite
+  steps:
+    - name: Settings
+      shell: bash
+      run: |
+        {
+          echo "APP_PROJECT=AAMMaui/AAMMaui.csproj"
+          echo "PACKAGE_NAME=com.aam.mobile"
+          # TargetFrameworks override: restore would otherwise require the iOS workload too.
+          echo "ANDROID_BUILD_FLAGS=-f net10.0-android -c Release -p:TargetFrameworks=net10.0-android"
+          echo "TAG_PREFIX=android-v"
+        } >> "$GITHUB_ENV"
+        case "${{ inputs.environment }}" in
+          qa|prod) ;;
+          *) echo "::error::environment must be qa or prod, got '${{ inputs.environment }}'."; exit 1 ;;
+        esac
+
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: microsoft
+        java-version: '21'
+
+    - name: Install the .NET MAUI Android workload
+      shell: bash
+      run: dotnet workload install maui-android
+
+    - name: Build (unsigned)
+      if: inputs.mode == 'check'
+      shell: bash
+      run: |
+        dotnet build "$APP_PROJECT" $ANDROID_BUILD_FLAGS -p:AppEnvironment=${{ inputs.environment }}
+        echo "### ✅ Android ${{ inputs.environment }} build check passed" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Compute next version
+      if: inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        # Same rules as iOS. Version = next after the last prod release tag (android-v*);
+        # QA and Prod builds share it until it is released to prod.
+        manifest=AAMMaui/Platforms/Android/AndroidManifest.xml
+        last=$(git tag -l "${TAG_PREFIX}[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -1 | sed "s/^${TAG_PREFIX}//")
+        if [ -z "$last" ]; then
+          last=$(grep -oE 'android:versionName="[0-9]+\.[0-9]+\.[0-9]+' "$manifest" | sed 's/.*"//')
+        fi
+        IFS=. read -r major minor patch <<< "$last"
+        case "${{ inputs.bump }}" in
+          major) major=$((major + 1)); minor=0; patch=0 ;;
+          minor) minor=$((minor + 1)); patch=0 ;;
+          *)     patch=$((patch + 1)) ;;
+        esac
+        version="$major.$minor.$patch"
+        # A higher version may already be in progress (e.g. a QA run bumped to 12.4.0 and it
+        # is not released yet): keep using it instead of going back to 12.3.x.
+        in_progress=$(git tag -l "android-build/*/*" | cut -d/ -f2 | sort -V | tail -1)
+        if [ -n "$in_progress" ] && [ "$(printf '%s\n%s\n' "$version" "$in_progress" | sort -V | tail -1)" = "$in_progress" ]; then
+          version="$in_progress"
+        fi
+        # Version code: Google Play needs an integer above every code ever uploaded, so it is
+        # the last one +1 (every upload is recorded in an android-build/<version>/<code> tag),
+        # starting after the code in AndroidManifest.xml.
+        last_code=$(git tag -l "android-build/*/*" | cut -d/ -f3 | sort -n | tail -1)
+        if [ -z "$last_code" ]; then
+          last_code=$(grep -oE 'android:versionCode="[0-9]+' "$manifest" | sed 's/.*"//')
+        fi
+        echo "APP_DISPLAY_VERSION=$version" >> "$GITHUB_ENV"
+        echo "APP_BUILD=$((last_code + 1))" >> "$GITHUB_ENV"
+        echo "APP_PREVIOUS_VERSION=$last" >> "$GITHUB_ENV"
+
+    - name: Decode the upload keystore
+      if: inputs.mode == 'deploy'
+      shell: bash
+      env:
+        KEYSTORE_BASE64: ${{ inputs.keystore-base64 }}
+      run: |
+        [ -n "$KEYSTORE_BASE64" ] || { echo "::error::Secret ANDROID_KEYSTORE_BASE64 is not set."; exit 1; }
+        printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/upload.keystore"
+
+    - name: Build signed App Bundle
+      if: inputs.mode == 'deploy'
+      shell: bash
+      env:
+        KEYSTORE_PASSWORD: ${{ inputs.keystore-password }}
+        KEY_PASSWORD: ${{ inputs.key-password }}
+        KEY_ALIAS: ${{ inputs.key-alias }}
+      run: |
+        # AndroidManifest.xml hardcodes versionName/versionCode; stamp the computed values
+        # into it (runner copy only) so they cannot override the build properties.
+        manifest=AAMMaui/Platforms/Android/AndroidManifest.xml
+        sed -i -E "s/android:versionName=\"[^\"]*\"/android:versionName=\"$APP_DISPLAY_VERSION\"/; s/android:versionCode=\"[^\"]*\"/android:versionCode=\"$APP_BUILD\"/" "$manifest"
+        grep -q "android:versionCode=\"$APP_BUILD\"" "$manifest" || { echo "::error::Could not stamp the version into $manifest."; exit 1; }
+
+        # Passwords go through files (file: prefix), which the AAB signing path supports.
+        umask 077
+        printf '%s' "$KEYSTORE_PASSWORD" > "$RUNNER_TEMP/storepass.txt"
+        printf '%s' "$KEY_PASSWORD" > "$RUNNER_TEMP/keypass.txt"
+
+        dotnet publish "$APP_PROJECT" $ANDROID_BUILD_FLAGS \
+          -p:AppEnvironment=${{ inputs.environment }} \
+          -p:ApplicationDisplayVersion=$APP_DISPLAY_VERSION \
+          -p:ApplicationVersion=$APP_BUILD \
+          -p:AndroidPackageFormat=aab \
+          -p:AndroidKeyStore=true \
+          -p:AndroidSigningKeyStore="$RUNNER_TEMP/upload.keystore" \
+          -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
+          -p:AndroidSigningStorePass="file:$RUNNER_TEMP/storepass.txt" \
+          -p:AndroidSigningKeyPass="file:$RUNNER_TEMP/keypass.txt" \
+          -o ./publish
+        aab=$(ls ./publish/*-Signed.aab 2>/dev/null | head -1)
+        [ -n "$aab" ] || { echo "::error::No signed .aab produced."; exit 1; }
+        echo "AAB_PATH=$aab" >> "$GITHUB_ENV"
+
+    - uses: actions/upload-artifact@v4
+      if: inputs.mode == 'deploy'
+      with:
+        name: android-${{ inputs.environment }}-${{ env.APP_DISPLAY_VERSION }}-${{ env.APP_BUILD }}
+        path: ${{ env.AAB_PATH }}
+
+    - name: Check Play upload credentials
+      id: play
+      if: inputs.mode == 'deploy'
+      shell: bash
+      env:
+        PLAY_JSON: ${{ inputs.play-service-account-json }}
+      run: |
+        if [ -n "$PLAY_JSON" ]; then
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::PLAY_SERVICE_ACCOUNT_JSON is not set: the bundle was built but not sent to Google Play."
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload to Google Play internal testing
+      if: steps.play.outputs.ready == 'true'
+      uses: r0adkll/upload-google-play@v1.1.3
+      with:
+        serviceAccountJsonPlainText: ${{ inputs.play-service-account-json }}
+        packageName: com.aam.mobile
+        releaseFiles: ${{ env.AAB_PATH }}
+        track: internal
+        status: completed
+
+    # android-build/<version>/<code> marks the version code as used (every upload).
+    # android-v<version> marks a prod release, so the next run moves to the next version.
+    - name: Tag build
+      if: steps.play.outputs.ready == 'true'
+      shell: bash
+      run: |
+        tags="android-build/$APP_DISPLAY_VERSION/$APP_BUILD"
+        if [ "${{ inputs.environment }}" = prod ]; then
+          tags="$tags ${TAG_PREFIX}${APP_DISPLAY_VERSION}"
+        fi
+        for tag in $tags; do git tag "$tag" "$GITHUB_SHA"; done
+        git push origin $tags
+        echo "APP_TAG=$tags" >> "$GITHUB_ENV"
+
+    - name: Summary
+      if: inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        if [ "${{ steps.play.outputs.ready }}" = "true" ]; then dest="Google Play internal testing"; else dest="not uploaded (artifact only)"; fi
+        {
+          echo "## 🤖 Android ${{ inputs.environment }} → $dest"
+          echo ""
+          echo "| | |"
+          echo "|---|---|"
+          echo "| Environment | \`${{ inputs.environment }}\` |"
+          echo "| Version | **$APP_DISPLAY_VERSION** (version code \`$APP_BUILD\`) |"
+          echo "| Previous release | $APP_PREVIOUS_VERSION |"
+          echo "| Branch | \`$GITHUB_REF_NAME\` (\`${GITHUB_SHA::7}\`) |"
+          echo "| Bundle | $(basename "$AAB_PATH") |"
+          echo "| Tag | ${APP_TAG:-none} |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Remove the keystore and password files
+      if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP/upload.keystore" "$RUNNER_TEMP/storepass.txt" "$RUNNER_TEMP/keypass.txt"

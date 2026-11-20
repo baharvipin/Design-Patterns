@@ -1,0 +1,818 @@
+﻿SOLID is a set of five object-oriented design principles that help us build code that is:
+
+Maintainable
+Testable
+Extensible
+Loosely coupled
+Easier to understand
+Less likely to break when requirements change
+
+SOLID
+| Letter | Principle                             | Core idea                                                                   |
+| ------ | --------------------------------------|---------------------------------------------------------------------------- |
+| **S**  | Single Responsibility Principle (SRP) | One class should have one reason to change                                  |
+| **O**  | Open/Closed Principle                 | Open for extension, closed for modification                                 |
+| **L**  | Liskov Substitution Principle         | Derived classes should be usable wherever base classes are expected         |
+| **I**  | Interface Segregation Principle       | Don't force classes to depend on methods they don't need                    |
+| **D**  | Dependency Inversion Principle        | High-level code should depend on abstractions, not concrete implementations |
+
+S: A class should have only one reason to change.
+This is often misunderstood as: "A class should contain only one method." That's wrong.
+
+A class can have many methods as long as those methods belong to the same responsibility.
+
+Bad example
+Imagine an insurance claim application.
+public class ClaimService
+{
+    public void CreateClaim(Claim claim)
+    {
+        // Create claim
+    }
+
+    public void ValidateClaim(Claim claim)
+    {
+        // Validate claim
+    }
+
+    public void SaveToDatabase(Claim claim)
+    {
+        // Save database
+    }
+
+    public void SendEmail(Claim claim)
+    {
+        // Send email
+    }
+
+    public void GeneratePdf(Claim claim)
+    {
+        // Generate PDF
+    }
+}
+This class has multiple responsibilities:
+ClaimService
+    │
+    ├── Claim creation
+    ├── Validation
+    ├── Database persistence
+    ├── Email
+    └── PDF generation
+
+Therefore it has multiple reasons to change.
+For example:
+Database changes
+        ↓
+ClaimService changes
+
+Email provider changes
+        ↓
+ClaimService changes
+
+PDF library changes
+        ↓
+ClaimService changes
+
+Validation rules change
+        ↓
+ClaimService changes
+That's an SRP violation.
+
+SRP Refactoring
+Separate responsibilities.
+public class ClaimService
+{
+    private readonly IClaimValidator _validator;
+    private readonly IClaimRepository _repository;
+
+    public ClaimService(
+        IClaimValidator validator,
+        IClaimRepository repository)
+    {
+        _validator = validator;
+        _repository = repository;
+    }
+
+    public async Task CreateClaimAsync(Claim claim)
+    {
+        _validator.Validate(claim);
+
+        await _repository.SaveAsync(claim);
+    }
+}
+
+Validation:
+public interface IClaimValidator
+{
+    void Validate(Claim claim);
+}
+public class ClaimValidator : IClaimValidator
+{
+    public void Validate(Claim claim)
+    {
+        if (claim == null)
+            throw new ArgumentNullException(nameof(claim));
+
+        if (claim.Amount <= 0)
+            throw new ArgumentException("Invalid claim amount.");
+    }
+}
+
+Repository:
+public interface IClaimRepository
+{
+    Task SaveAsync(Claim claim);
+}
+Email:
+public interface IEmailService
+{
+    Task SendAsync(string email, string subject, string message);
+}
+
+PDF:
+public interface IPdfGenerator
+{
+    byte[] Generate(Claim claim);
+}
+Now each component has a clear responsibility.
+
+Q: What does "one responsibility" actually mean?
+It means a class should have one reason to change, not necessarily one method. If a class handles claim business logic, 
+database persistence, email notification, and PDF generation, those are independent responsibilities and should be separated.
+
+Q. Is SRP the same as separation of concerns?
+They're closely related but not identical.
+Separation of concerns is the broader concept.
+SRP applies that idea at the class/module level.
+
+Q. Can a service call a repository and notification service?
+Yes
+
+public class OrderService
+{
+    private readonly IOrderRepository _repository;
+    private readonly INotificationService _notification;
+
+    public async Task PlaceOrder(Order order)
+    {
+        await _repository.SaveAsync(order);
+
+        await _notification.SendAsync(
+            order.CustomerId,
+            "Order placed");
+    }
+}
+The service is still responsible for orchestrating order placement.
+It doesn't implement database or notification logic itself.
+
+
+
+O — Open/Closed Principle
+=>Software entities should be open for extension but closed for modification.
+You should be able to add new behavior without repeatedly modifying existing, stable code.
+public class DiscountService
+{
+    public decimal CalculateDiscount(
+        string customerType,
+        decimal amount)
+    {
+        if (customerType == "Regular")
+        {
+            return amount * 0.05m;
+        }
+
+        if (customerType == "Premium")
+        {
+            return amount * 0.10m;
+        }
+
+        if (customerType == "VIP")
+        {
+            return amount * 0.20m;
+        }
+
+        return 0;
+    }
+}
+
+OCP Solution
+Create an abstraction.
+public interface IDiscountStrategy
+{
+    bool CanHandle(string customerType);
+
+    decimal Calculate(decimal amount);
+}
+
+Regular:
+
+public class RegularDiscount : IDiscountStrategy
+{
+    public bool CanHandle(string customerType)
+        => customerType == "Regular";
+
+    public decimal Calculate(decimal amount)
+        => amount * 0.05m;
+}
+
+Premium:
+
+public class PremiumDiscount : IDiscountStrategy
+{
+    public bool CanHandle(string customerType)
+        => customerType == "Premium";
+
+    public decimal Calculate(decimal amount)
+        => amount * 0.10m;
+}
+
+VIP:
+
+public class VipDiscount : IDiscountStrategy
+{
+    public bool CanHandle(string customerType)
+        => customerType == "VIP";
+
+    public decimal Calculate(decimal amount)
+        => amount * 0.20m;
+}
+
+Service:
+
+public class DiscountService
+{
+    private readonly IEnumerable<IDiscountStrategy> _strategies;
+
+    public DiscountService(
+        IEnumerable<IDiscountStrategy> strategies)
+    {
+        _strategies = strategies;
+    }
+
+    public decimal Calculate(
+        string customerType,
+        decimal amount)
+    {
+        var strategy = _strategies
+            .FirstOrDefault(x => x.CanHandle(customerType));
+
+        if (strategy == null)
+            return 0;
+
+        return strategy.Calculate(amount);
+    }
+}
+
+Now add:
+
+public class EmployeeDiscount : IDiscountStrategy
+{
+    public bool CanHandle(string customerType)
+        => customerType == "Employee";
+
+    public decimal Calculate(decimal amount)
+        => amount * 0.30m;
+}
+
+You didn't modify DiscountService.
+
+That's the key idea.
+
+Q: Does OCP mean we should never modify existing code?
+
+No.
+This is an important interview distinction.
+OCP means that when adding a new variation of behavior, you should ideally extend the system rather than 
+modify stable existing logic.
+Bug fixes and necessary refactoring can obviously require modifying existing code.
+
+L — Liskov Substitution Principle
+This is usually the hardest SOLID principle to explain correctly.
+Objects of a derived class should be replaceable for objects of the base class without breaking the correctness 
+of the program.
+Classic Rectangle/Square Problem
+Consider:
+public class Rectangle
+{
+    public virtual int Width { get; set; }
+
+    public virtual int Height { get; set; }
+
+    public int GetArea()
+    {
+        return Width * Height;
+    }
+}
+
+Now:
+public class Square : Rectangle
+{
+    public override int Width
+    {
+        set
+        {
+            base.Width = value;
+            base.Height = value;
+        }
+    }
+
+    public override int Height
+    {
+        set
+        {
+            base.Width = value;
+            base.Height = value;
+        }
+    }
+}
+
+Rectangle rectangle = new Square();
+
+rectangle.Width = 10;
+rectangle.Height = 5;
+
+public abstract class PaymentProcessor
+{
+    public abstract Task RefundAsync(decimal amount);
+}
+
+public class CreditCardPayment : PaymentProcessor
+{
+    public override Task RefundAsync(decimal amount)
+    {
+        // Refund
+    }
+}
+
+But suppose:
+
+public class CashPayment : PaymentProcessor
+{
+    public override Task RefundAsync(decimal amount)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+Now the application assumes:
+
+PaymentProcessor processor = GetProcessor();
+
+await processor.RefundAsync(100);
+
+But one implementation cannot support the operation.
+
+This may indicate the abstraction is wrong.
+
+Q: Is every inheritance relationship an LSP relationship?
+
+No.
+
+A syntactically valid inheritance relationship does not guarantee behavioral substitutability.
+
+You need to ask:
+
+Can the derived object satisfy the expectations of code using the base abstraction?
+
+
+
+I — Interface Segregation Principle
+Definition
+
+Clients should not be forced to depend on methods they do not use.
+
+Don't create giant interfaces.
+Bad Example:
+public interface IEmployee
+{
+    void Work();
+    void Eat();
+    void Sleep();
+    void Drive();
+    void ManageTeam();
+}
+
+Now:
+public class Developer : IEmployee
+{
+    public void Work()
+    {
+    }
+
+    public void Eat()
+    {
+    }
+
+    public void Sleep()
+    {
+    }
+
+    public void Drive()
+    {
+    }
+
+    public void ManageTeam()
+    {
+        throw new NotSupportedException();
+    }
+}
+
+The developer doesn't manage a team.
+
+The interface is too large.
+
+ISP Solution
+
+Break the interface.
+
+public interface IWorker
+{
+    void Work();
+}
+public interface IManager
+{
+    void ManageTeam();
+}
+public interface IHuman
+{
+    void Eat();
+    void Sleep();
+}
+
+Developer:
+
+public class Developer : IWorker, IHuman
+{
+    public void Work()
+    {
+    }
+
+    public void Eat()
+    {
+    }
+
+    public void Sleep()
+    {
+    }
+}
+
+Manager:
+public class Manager : IWorker, IManager, IHuman
+{
+    public void Work()
+    {
+    }
+
+    public void ManageTeam()
+    {
+    }
+
+    public void Eat()
+    {
+    }
+
+    public void Sleep()
+    {
+    }
+}
+
+Much cleaner.
+
+Real .NET Example 
+Imagine:
+
+public interface IUserService
+{
+    Task<User> GetUserAsync();
+    Task CreateUserAsync();
+    Task UpdateUserAsync();
+    Task DeleteUserAsync();
+    Task ExportUsersAsync();
+    Task SendUserEmailAsync();
+    Task ResetPasswordAsync();
+}
+
+Maybe different consumers only need:
+Read users Or Create Users
+Instead:
+public interface IUserReader
+{
+    Task<User> GetUserAsync(int id);
+}
+public interface IUserWriter
+{
+    Task CreateAsync(User user);
+    Task UpdateAsync(User user);
+}
+public interface IUserDeleter
+{
+    Task DeleteAsync(int id);
+}
+Now clients depend only on what they need.
+
+
+
+D — Dependency Inversion Principle
+This is one of the most important SOLID principles for .NET developers because it directly connects to Dependency Injection.
+
+Definition
+High-level modules should not depend directly on low-level modules. Both should depend on abstractions.
+And:
+Abstractions should not depend on details. Details should depend on abstractions.
+
+Bad Example
+public class OrderService
+{
+    private readonly SqlOrderRepository _repository;
+
+    public OrderService()
+    {
+        _repository = new SqlOrderRepository();
+    }
+
+    public void CreateOrder(Order order)
+    {
+        _repository.Save(order);
+    }
+}
+
+Problem:
+OrderService
+     ↓
+SqlOrderRepository
+     ↓
+SQL Server
+
+OrderService is tightly coupled to SQL Server implementation.
+
+Suppose tomorrow you want:
+PostgreSQL
+MongoDB
+API
+Mock repository
+You need to change OrderService.
+
+DIP Solution
+
+Create abstraction:
+
+public interface IOrderRepository
+{
+    Task SaveAsync(Order order);
+}
+
+Implementation:
+
+public class SqlOrderRepository : IOrderRepository
+{
+    public async Task SaveAsync(Order order)
+    {
+        // SQL Server implementation
+    }
+}
+
+High-level service:
+
+public class OrderService
+{
+    private readonly IOrderRepository _repository;
+
+    public OrderService(IOrderRepository repository)
+    {
+        _repository = repository;
+    }
+
+    public async Task CreateOrderAsync(Order order)
+    {
+        await _repository.SaveAsync(order);
+    }
+}
+
+Now:
+
+                 IOrderRepository
+                /                \
+               /                  \
+OrderService → SqlRepository    MongoRepository
+
+The high-level service depends on the abstraction.
+
+ASP.NET Core Dependency Injection
+
+Register:
+
+builder.Services.AddScoped<IOrderRepository, SqlOrderRepository>();
+builder.Services.AddScoped<OrderService>();
+
+Then ASP.NET Core creates:
+
+OrderService
+      ↓
+IOrderRepository
+      ↓
+SqlOrderRepository
+
+automatically.
+
+
+
+DIP vs Dependency Injection
+
+This is a very common interview question.
+
+They are NOT the same.
+
+Dependency Inversion Principle
+
+A design principle.
+
+It says:
+
+Depend on abstractions rather than concrete implementations.
+
+Dependency Injection
+
+A technique/pattern for supplying dependencies from outside.
+
+Example:
+
+public OrderService(IOrderRepository repository)
+{
+    _repository = repository;
+}
+
+That's Dependency Injection.
+
+So:
+
+DIP = principle
+
+DI = implementation technique
+
+Other ways to implement dependencies include:
+
+Constructor Injection
+Property Injection
+Method Injection
+
+Constructor injection is generally preferred.
+
+Complete SOLID Example
+
+Let's build a realistic insurance claim scenario.
+Suppose:
+User creates insurance claim
+       ↓
+Validate claim
+       ↓
+Save claim
+       ↓
+Upload documents
+       ↓
+Send notification
+
+
+A bad implementation:
+
+public class ClaimManager
+{
+    public async Task CreateClaim(Claim claim)
+    {
+        // Validate
+
+        // SQL query
+
+        // Upload Azure Blob
+
+        // Send Firebase notification
+
+        // Send email
+
+        // Generate PDF
+    }
+}
+
+What is SOLID?
+SOLID is a set of five object-oriented design principles that help create maintainable, 
+loosely coupled, extensible, and testable software.
+
+What does S stand for?
+Single Responsibility Principle.
+A class should have one reason to change.
+
+What does O stand for?
+Open/Closed Principle.
+Software should be open for extension but closed for modification.
+
+What does L stand for?
+Liskov Substitution Principle.
+Derived implementations should be safely substitutable for their abstractions without violating expected behavior.
+
+What does I stand for?
+Interface Segregation Principle.
+Clients shouldn't be forced to depend on methods they don't use.
+
+What does D stand for?
+Dependency Inversion Principle.
+High-level modules should depend on abstractions rather than concrete low-level implementations.
+
+Q: SRP vs OCP?
+SRP
+Controls responsibility.
+Ask:
+Does this class have multiple reasons to change?
+OCP
+Controls extensibility.
+Ask:
+Do I need to modify existing code every time I add a new behavior?
+
+
+Q: DIP vs DI?
+DIP
+↓
+Design principle
+DI
+↓
+Technique for supplying dependencies
+Example:
+public OrderService(IOrderRepository repository)
+is DI.
+Depending on:
+IOrderRepository
+
+rather than:
+SqlOrderRepository
+supports DIP.
+
+Q: Which SOLID principle is most related to Dependency Injection?
+D — Dependency Inversion Principle.
+But DI itself is not DIP.
+
+Q: Is inheritance required for SOLID?
+
+No.
+SOLID can be applied using:
+Interfaces
+Composition
+Dependency Injection
+Delegation
+Strategy pattern
+Factory pattern
+Decorators
+In modern C#, composition is often preferred over inheritance when behavior needs to vary independently.
+
+
+Q: Composition vs Inheritance?
+Inheritance:
+class Dog : Animal
+means:
+Dog is an Animal.
+Composition:
+class OrderService
+{
+    private readonly IPaymentService _payment;
+}
+
+means:
+OrderService uses a payment service.
+Composition generally reduces coupling and often makes OCP/DIP easier to achieve.
+
+Minimized Risk of Bugs: By following OCP, existing code remains unaltered when new features are added. 
+This significantly reduces the risk of introducing bugs into already tested and proven code, ensuring 
+stability and reliability.
+
+Increased Reusability: Components designed to be extended (but not modified) can be reused across different 
+parts of the application or even in different projects.
+
+Improved Maintainability: Since the core functionality of existing modules does not change, maintaining the 
+application becomes simpler. Modifications are made by adding new code rather than changing the old one, 
+which helps in maintaining a clean and organized codebase.
+
+Use of OOPs Concept Effectively: Applying OCP often leads to the use of interfaces and abstract classes, 
+promoting the use of inheritance and polymorphism (OOP Concepts). This results in a more flexible and dynamic 
+architecture, where behavior can be changed dynamically at runtime.
+
+Events, Delegate, and Lambda Expressions: OCP can be effectively implemented using events, delegates, 
+and lambda expressions. This allows for dynamic behavior changes without altering existing code, 
+making the system more adaptable to changing requirements.
+
+
+In C#, value types store their data directly, and assigning one value-type variable to another copies the value. Examples include int, 
+bool, struct, and enum.
+
+Reference types hold references to objects. When we assign one reference-type variable to another, the reference is copied, so both variables 
+can refer to the same object. Examples include classes, arrays, strings, and delegates.
+
+C# passes parameters by value by default, including reference-type parameters. For a reference type, the method receives a copy of the reference, 
+allowing it to modify the shared object but not reassign the caller's variable. We can use ref when we need to pass the variable itself by reference.”
+
+Boxing is the conversion of a value type into an object or a compatible interface type. The runtime typically allocates a boxed object 
+and copies the value into it. Unboxing extracts the value type from the boxed object using an explicit cast. Boxing can create memory and 
+garbage-collection overhead, so generic collections and generic methods are preferred when working with value types. Unboxing can fail 
+if the boxed type does not match the requested value type.
+
+Garbage collection is the automatic memory management mechanism in .NET. It identifies managed objects that are no longer reachable from 
+GC roots and reclaims their memory. The GC uses three generations—0, 1, and 2—to optimize collection based on object lifetime. Generation 0 
+is collected frequently, while Generation 2 contains long-lived objects. GC manages managed memory, but disposable resources such as file 
+handles and streams should be released using IDisposable and using. We generally avoid forcing collections with GC.Collect() because the 
+runtime can manage collection more efficiently.

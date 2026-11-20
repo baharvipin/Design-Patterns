@@ -1,0 +1,23 @@
+﻿Redis: stands for Remote Dictionary Server. It is an open-source, in-memory data store commonly used as a database, cache, 
+message broker, and streaming engine.
+
+Redis stores data primarily in memory (RAM), which makes many operations extremely fast.
+
+Imagine your ASP.NET Core API needs to fetch a user's profile from SQL Server every time they open the application.
+
+Without Redis:
+
+The API receives a request.
+It queries SQL Server.
+SQL Server retrieves the profile.
+The API returns the response.
+
+
+With Redis caching:
+
+The API receives a request.
+It checks Redis for the profile.
+If the profile exists in Redis, it returns the cached value.
+If not, it queries SQL Server and stores the result in Redis.
+
+This reduces repeated database queries and can significantly improve response time.

@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace ConsoleApp.src.OOPsConcepts.Abstraction.Payment
+﻿namespace ConsoleApp.src.OOPsConcepts.Abstraction.Payment
 {
     // Abstract class: provides shared functionality and partial abstraction
     public abstract class PaymentBase : IPayment
@@ -23,6 +17,7 @@ namespace ConsoleApp.src.OOPsConcepts.Abstraction.Payment
         // Abstract methods — must be implemented by child classes
         public abstract void MakePayment(double amount);
         public abstract void Refund(double amount);
+        // abstract methods do not have a body and must be implemented in derived classes
 
         // Common method
         private double balance;

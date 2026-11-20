@@ -1,0 +1,49 @@
+name: Android (QA)
+run-name: >-
+  ${{ github.event_name == 'pull_request' && format('Android QA · PR check · {0}', github.head_ref)
+  || format('Android QA → Google Play internal · {0} ({1})', github.ref_name, inputs.bump) }}
+
+# Manual run: signed App Bundle pointing at the QA backend, uploaded to Google Play
+# internal testing. Pull requests: unsigned build only, to catch build breaks.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+  pull_request:
+    branches: [dev, qa, staging, main]
+    paths:
+      - 'AAMMaui/**'
+      - '.github/actions/android/**'
+      - '.github/workflows/android-qa.yml'
+
+concurrency:
+  # PR checks run per branch. Deploys share "android-deploy" with Android (Prod): each one
+  # takes the next version code, so two deploys must never run at the same time.
+  group: ${{ github.event_name == 'pull_request' && format('android-qa-{0}', github.ref) || 'android-deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  android:
+    name: Android QA
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # pushes the android-build/<version>/<code> tag
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/android
+        with:
+          mode: ${{ github.event_name == 'pull_request' && 'check' || 'deploy' }}
+          environment: qa
+          bump: ${{ inputs.bump || 'patch' }}
+          keystore-base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore-password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key-password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          play-service-account-json: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}

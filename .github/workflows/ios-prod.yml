@@ -1,0 +1,45 @@
+name: iOS (Prod)
+run-name: iOS Prod → TestFlight · ${{ github.ref_name }} (${{ inputs.bump }})
+
+# Manual run only: signed build pointing at the PRODUCTION backend, uploaded to
+# TestFlight and tagged ios-v<version>. Submitting it for App Store review is done
+# by hand in App Store Connect.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+concurrency:
+  # Shared with iOS (QA) deploys: each one takes the next build number.
+  group: ios-deploy
+  cancel-in-progress: false
+
+jobs:
+  ios:
+    name: iOS Prod
+    runs-on: macos-26
+    # Add required reviewers to the "production" environment (Settings → Environments)
+    # to require an approval before every prod build.
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/ios
+        with:
+          mode: deploy
+          environment: prod
+          bump: ${{ inputs.bump }}
+          cert-p12-base64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          cert-password: ${{ secrets.IOS_CERT_PASSWORD }}
+          profile-base64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          asc-key-id: ${{ secrets.ASC_KEY_ID }}
+          asc-issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          asc-key-p8: ${{ secrets.ASC_KEY_P8 }}

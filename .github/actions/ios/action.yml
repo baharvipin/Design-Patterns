@@ -1,0 +1,237 @@
+name: iOS build and TestFlight upload
+description: >
+  Builds the AAMMaui iOS app for one backend environment (qa or prod), signs it and
+  uploads it to TestFlight. With mode=check it only compiles an unsigned device build (PRs).
+
+inputs:
+  mode:
+    description: "deploy (signed .ipa + TestFlight) or check (unsigned device build)"
+    default: deploy
+  environment:
+    description: "Backend environment baked into the app: qa or prod"
+    required: true
+  bump:
+    description: "Version part to increase: patch, minor or major"
+    default: patch
+  cert-p12-base64:
+    description: Apple Distribution certificate (.p12), base64
+  cert-password:
+    description: Password of the .p12
+  profile-base64:
+    description: App Store provisioning profile (.mobileprovision), base64
+  asc-key-id:
+    description: App Store Connect API key ID
+  asc-issuer-id:
+    description: App Store Connect API issuer ID
+  asc-key-p8:
+    description: App Store Connect API private key (.p8 contents)
+
+runs:
+  using: composite
+  steps:
+    - name: Settings
+      shell: bash
+      run: |
+        {
+          echo "APP_PROJECT=AAMMaui/AAMMaui.csproj"
+          echo "BUNDLE_ID=com.aam.mobile"
+          # TargetFrameworks override: restore would otherwise require the Android workload too.
+          echo "IOS_BUILD_FLAGS=-f net10.0-ios -c Release -p:TargetFrameworks=net10.0-ios"
+          echo "TAG_PREFIX=ios-v"
+        } >> "$GITHUB_ENV"
+        case "${{ inputs.environment }}" in
+          qa|prod) ;;
+          *) echo "::error::environment must be qa or prod, got '${{ inputs.environment }}'."; exit 1 ;;
+        esac
+
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    # macos-26 has Xcode up to 26.6. The newest maui-ios workload (27.x) needs Xcode 27,
+    # which is only on the xcode-27 preview image (long queues), so the workload set is
+    # pinned to 10.0.401 = Microsoft.NET.Sdk.iOS 26.5, which requires Xcode 26.6.
+    - uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: '26.6'
+
+    - name: Install the .NET MAUI iOS workload
+      shell: bash
+      run: dotnet workload install maui-ios --version 10.0.401
+
+    # Device build without signing: the AppCenter native library has no arm64 simulator
+    # slice, so a simulator build fails to link.
+    - name: Build (device, unsigned)
+      if: inputs.mode == 'check'
+      shell: bash
+      run: |
+        dotnet build "$APP_PROJECT" $IOS_BUILD_FLAGS \
+          -p:AppEnvironment=${{ inputs.environment }} \
+          -p:RuntimeIdentifier=ios-arm64 \
+          -p:EnableCodeSigning=false \
+          -p:BuildIpa=false
+        echo "### ✅ iOS ${{ inputs.environment }} build check passed" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Compute next version
+      if: inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        # Version = next after the last prod release tag (ios-v*); QA and Prod builds share it
+        # until it is released to prod.
+        last=$(git tag -l "${TAG_PREFIX}[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -1 | sed "s/^${TAG_PREFIX}//")
+        if [ -z "$last" ]; then
+          last=$(grep -oE 'android:versionName="[0-9]+\.[0-9]+\.[0-9]+' AAMMaui/Platforms/Android/AndroidManifest.xml | sed 's/.*"//')
+        fi
+        IFS=. read -r major minor patch <<< "$last"
+        case "${{ inputs.bump }}" in
+          major) major=$((major + 1)); minor=0; patch=0 ;;
+          minor) minor=$((minor + 1)); patch=0 ;;
+          *)     patch=$((patch + 1)) ;;
+        esac
+        version="$major.$minor.$patch"
+        # A higher version may already be in progress (e.g. a QA run bumped to 12.4.0 and it
+        # is not released yet): keep using it instead of going back to 12.3.11.
+        in_progress=$(git tag -l "ios-build/*/*" | cut -d/ -f2 | sort -V | tail -1)
+        if [ -n "$in_progress" ] && [ "$(printf '%s\n%s\n' "$version" "$in_progress" | sort -V | tail -1)" = "$in_progress" ]; then
+          version="$in_progress"
+          IFS=. read -r major minor patch <<< "$version"
+        fi
+        # Build number in the same format, unique inside the version: the first upload of
+        # 12.3.11 is build 12.3.11, the next ones 12.3.12, 12.3.13... (QA or Prod). Every
+        # upload is recorded in an ios-build/<version>/<build> tag.
+        last_build_patch=$(git tag -l "ios-build/$version/*" | sed 's|.*\.||' | sort -n | tail -1)
+        build_patch=$([ -n "$last_build_patch" ] && echo $((last_build_patch + 1)) || echo "$patch")
+        echo "APP_DISPLAY_VERSION=$version" >> "$GITHUB_ENV"
+        echo "APP_BUILD=$major.$minor.$build_patch" >> "$GITHUB_ENV"
+        echo "APP_PREVIOUS_VERSION=$last" >> "$GITHUB_ENV"
+
+    - name: Import signing certificate and provisioning profile
+      if: inputs.mode == 'deploy'
+      shell: bash
+      env:
+        CERT_P12_BASE64: ${{ inputs.cert-p12-base64 }}
+        CERT_PASSWORD: ${{ inputs.cert-password }}
+        PROFILE_BASE64: ${{ inputs.profile-base64 }}
+      run: |
+        [ -n "$CERT_P12_BASE64" ] || { echo "::error::Secret IOS_CERT_P12_BASE64 is not set."; exit 1; }
+        [ -n "$PROFILE_BASE64" ]  || { echo "::error::Secret IOS_PROFILE_BASE64 is not set."; exit 1; }
+
+        KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+        KEYCHAIN_PASS="$(uuidgen)"
+        security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN"
+        security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+
+        # Strip whitespace/CR: secrets set from Windows may carry line breaks.
+        printf '%s' "$CERT_P12_BASE64" | tr -d ' \r\n' | base64 --decode > "$RUNNER_TEMP/cert.p12"
+        security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -f pkcs12 \
+          -T /usr/bin/codesign -T /usr/bin/security
+        rm -f "$RUNNER_TEMP/cert.p12"
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN" > /dev/null
+        security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+        identity=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -oE '"(Apple|iPhone) Distribution[^"]*"' | head -1 | tr -d '"')
+        [ -n "$identity" ] || { echo "::error::No Distribution certificate found in IOS_CERT_P12_BASE64."; exit 1; }
+
+        printf '%s' "$PROFILE_BASE64" | tr -d ' \r\n' | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+        security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+        profile_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")
+        profile_name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+        profile_app=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
+        case "$profile_app" in
+          *".${BUNDLE_ID}") ;;
+          *) echo "::error::Profile '$profile_name' is for '$profile_app', not ${BUNDLE_ID}."; exit 1 ;;
+        esac
+        for dir in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+          mkdir -p "$dir"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$dir/$profile_uuid.mobileprovision"
+        done
+        rm -f "$RUNNER_TEMP/profile.mobileprovision" "$RUNNER_TEMP/profile.plist"
+
+        echo "CODESIGN_KEY=$identity" >> "$GITHUB_ENV"
+        echo "CODESIGN_PROVISION=$profile_name" >> "$GITHUB_ENV"
+
+    - name: Build signed .ipa
+      if: inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        # MSBuild splits -p: values on ',' and ';' ("AAM, LLC"), so escape them.
+        key=$(printf '%s' "$CODESIGN_KEY" | sed 's/,/%2C/g; s/;/%3B/g')
+        provision=$(printf '%s' "$CODESIGN_PROVISION" | sed 's/,/%2C/g; s/;/%3B/g')
+        dotnet publish "$APP_PROJECT" $IOS_BUILD_FLAGS \
+          -p:AppEnvironment=${{ inputs.environment }} \
+          -p:ApplicationDisplayVersion=$APP_DISPLAY_VERSION \
+          -p:ApplicationVersion=$APP_BUILD \
+          -p:RuntimeIdentifier=ios-arm64 \
+          -p:ArchiveOnBuild=true \
+          -p:CodesignKey="$key" \
+          -p:CodesignProvision="$provision" \
+          -o ./publish
+        ipa=$(find ./publish -name '*.ipa' | head -1)
+        [ -n "$ipa" ] || { echo "::error::No .ipa produced."; exit 1; }
+        echo "IPA_PATH=$ipa" >> "$GITHUB_ENV"
+
+    - uses: actions/upload-artifact@v4
+      if: inputs.mode == 'deploy'
+      with:
+        name: ios-${{ inputs.environment }}-${{ env.APP_DISPLAY_VERSION }}-${{ env.APP_BUILD }}
+        path: ${{ env.IPA_PATH }}
+
+    - name: Upload to TestFlight
+      if: inputs.mode == 'deploy'
+      shell: bash
+      env:
+        ASC_KEY_ID: ${{ inputs.asc-key-id }}
+        ASC_ISSUER_ID: ${{ inputs.asc-issuer-id }}
+        ASC_KEY_P8: ${{ inputs.asc-key-p8 }}
+      run: |
+        if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ]; then
+          echo "::error::ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 are not all set."
+          exit 1
+        fi
+        mkdir -p "$HOME/.appstoreconnect/private_keys"
+        printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+        xcrun altool --upload-app -f "$IPA_PATH" -t ios \
+          --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+    # ios-build/<version>/<build> marks the build number as used (every upload).
+    # ios-v<version> marks a prod release, so the next run moves to the next version.
+    - name: Tag build
+      if: inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        tags="ios-build/$APP_DISPLAY_VERSION/$APP_BUILD"
+        if [ "${{ inputs.environment }}" = prod ]; then
+          tags="$tags ${TAG_PREFIX}${APP_DISPLAY_VERSION}"
+        fi
+        for tag in $tags; do git tag "$tag" "$GITHUB_SHA"; done
+        git push origin $tags
+        echo "APP_TAG=$tags" >> "$GITHUB_ENV"
+
+    - name: Summary
+      if: inputs.mode == 'deploy'
+      shell: bash
+      run: |
+        {
+          echo "## 🍎 iOS ${{ inputs.environment }} → TestFlight"
+          echo ""
+          echo "| | |"
+          echo "|---|---|"
+          echo "| Environment | \`${{ inputs.environment }}\` |"
+          echo "| Version | **$APP_DISPLAY_VERSION** (build \`$APP_BUILD\`) |"
+          echo "| Previous release | $APP_PREVIOUS_VERSION |"
+          echo "| Branch | \`$GITHUB_REF_NAME\` (\`${GITHUB_SHA::7}\`) |"
+          echo "| Signed with | $CODESIGN_KEY / $CODESIGN_PROVISION |"
+          echo "| Tag | $APP_TAG |"
+          echo ""
+          echo "The build shows up in App Store Connect → TestFlight after Apple finishes processing it (usually 5-30 min)."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Remove signing material
+      if: always()
+      shell: bash
+      run: |
+        security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
+        rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision \
+              "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"*.mobileprovision \
+              "$HOME/.appstoreconnect/private_keys/"*.p8
